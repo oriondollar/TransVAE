@@ -188,9 +188,9 @@ class TransVAE():
 
                 src = Variable(data[:,:-1], requires_grad=False).long()
                 tgt = Variable(data[:,1:-1], requires_grad=False).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-                scores = Variable(data[:,-1], requires_grad=False)
+                src_mask = (src != self.pad_idx).unsqueeze(-2).cuda()
+                tgt_mask = make_std_mask(tgt, self.pad_idx).cuda()
+                scores = Variable(data[:,-1], requires_grad=False).cuda()
 
                 x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
                 loss, bce, kld = ce_loss(src, x_out, mu, logvar,
