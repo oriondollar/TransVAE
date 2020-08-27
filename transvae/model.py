@@ -294,7 +294,7 @@ class VAEEncoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Adding Convolutional Bottleneck
-        self.conv_layers = []
+        self.conv_layers = [self.conv1, self.conv2, self.conv3]
         in_d = layer.size
         first = True
         for i in range(3):
@@ -306,11 +306,11 @@ class VAEEncoder(nn.Module):
                 kernel_size = 20
             if i == 2:
                 out_d = 64
-            self.conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
+            self.conv_layers[i] = nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2))
             in_d = out_d
-        self.conv1 = self.conv_layers[0]
-        self.conv2 = self.conv_layers[1]
-        self.conv3 = self.conv_layers[2]
+        # self.conv1 = self.conv_layers[0]
+        # self.conv2 = self.conv_layers[1]
+        # self.conv3 = self.conv_layers[2]
         self.z_means = nn.Linear(320, 128)
         self.z_var = nn.Linear(320, 128)
 
@@ -325,11 +325,11 @@ class VAEEncoder(nn.Module):
             x = layer(x, mask)
         x = self.norm(x)
         x = x.permute(0, 2, 1)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        # for i, conv in enumerate(self.conv_layers):
-        #     x = F.relu(conv(x))
+        # x = F.relu(self.conv1(x))
+        # x = F.relu(self.conv2(x))
+        # x = F.relu(self.conv3(x))
+        for i, conv in enumerate(self.conv_layers):
+            x = F.relu(conv(x))
         x = x.contiguous().view(x.size(0), -1)
         mu, logvar = self.z_means(x), self.z_var(x)
         z = self.reparameterize(mu, logvar)
