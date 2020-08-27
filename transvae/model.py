@@ -41,6 +41,8 @@ class TransVAE():
         self.name = name
         if 'BATCH_SIZE' not in self.params.keys():
             self.params['BATCH_SIZE'] = 500
+        if 'BATCH_CHUNKS' not in self.params.keys():
+            self.params['BATCH_CHUNKS'] = 5
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
         if 'CHAR_WEIGHTS' in self.params.keys():
@@ -156,6 +158,8 @@ class TransVAE():
                                                batch_size=self.params['BATCH_SIZE'],
                                                shuffle=True, num_workers=0,
                                                pin_memory=False, drop_last=True)
+        self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
+
 
         torch.backends.cudnn.benchmark = True
 
@@ -182,56 +186,78 @@ class TransVAE():
             ### Train Loop
             self.model.train()
             for j, data in enumerate(train_iter):
-                if self.use_gpu:
-                    data = data.cuda()
+                avg_losses = []
+                avg_bce_losses = []
+                avg_kld_losses = []
+                for i in range(self.params['BATCH_CHUNKS']):
+                    batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                    if self.use_gpu:
+                        batch_data = batch_data.cuda()
 
-                src = Variable(data[:,:-1], requires_grad=False).long()
-                tgt = Variable(data[:,1:-1], requires_grad=False).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-                scores = Variable(data[:,-1], requires_grad=False)
+                    src = Variable(batch_data[:,:-1], requires_grad=False).long()
+                    tgt = Variable(batch_data[:,1:-1], requires_grad=False).long()
+                    src_mask = (src != self.pad_idx).unsqueeze(-2)
+                    tgt_mask = make_std_mask(tgt, self.pad_idx)
+                    scores = Variable(data[:,-1], requires_grad=False)
 
-                x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                loss, bce, kld = ce_loss(src, x_out, mu, logvar,
-                                         self.params['CHAR_WEIGHTS'])
-                loss.backward()
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = ce_loss(src, x_out, mu, logvar,
+                                             self.params['CHAR_WEIGHTS'])
+                    avg_losses.append(loss.item())
+                    avg_bce_losses.append(bce.item())
+                    avg_kld_losses.append(kld.item())
+                    loss.backward()
                 self.optimizer.step()
                 self.model.zero_grad()
+                avg_loss = np.mean(avg_losses)
+                avg_bce = np.mean(avg_bce_losses)
+                avg_kld = np.mean(avg_kld_losses)
 
                 if log:
                     log_file = open(log_fn, 'a')
                     log_file.write('{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'train',
-                                                                loss.item(),
-                                                                bce.item(),
-                                                                kld.item()))
+                                                                avg_loss,
+                                                                avg_bce,
+                                                                avg_kld))
                     log_file.close()
 
             ### Val Loop
             self.model.eval()
             losses = []
             for j, data in enumerate(val_iter):
-                if self.use_gpu:
-                    data = data.cuda()
+                avg_losses = []
+                avg_bce_losses = []
+                avg_kld_losses = []
+                for i in range(self.params['BATCH_CHUNKS']):
+                    batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                    if self.use_gpu:
+                        batch_data = batch_data.cuda()
 
-                src = Variable(data[:,:-1], requires_grad=False).long()
-                tgt = Variable(data[:,1:-1], requires_grad=False).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-                scores = Variable(data[:,-1], requires_grad=False)
+                    src = Variable(batch_data[:,:-1], requires_grad=False).long()
+                    tgt = Variable(batch_data[:,1:-1], requires_grad=False).long()
+                    src_mask = (src != self.pad_idx).unsqueeze(-2)
+                    tgt_mask = make_std_mask(tgt, self.pad_idx)
+                    scores = Variable(data[:,-1], requires_grad=False)
 
-                x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                loss, bce, kld = ce_loss(src, x_out, mu, logvar,
-                                         self.params['CHAR_WEIGHTS'])
-                losses.append(loss.item())
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = ce_loss(src, x_out, mu, logvar,
+                                             self.params['CHAR_WEIGHTS'])
+                    avg_losses.append(loss.item())
+                    avg_bce_losses.append(bce.item())
+                    avg_kld_losses.append(kld.item())
+                avg_loss = np.mean(avg_losses)
+                avg_bce = np.mean(avg_bce_losses)
+                avg_kld = np.mean(avg_kld_losses)
+                losses.append(avg_loss)
 
                 if log:
                     log_file = open(log_fn, 'a')
                     log_file.write('{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'test',
-                                                                loss.item(),
-                                                                bce.item(),
-                                                                kld.item()))
+                                                                avg_loss,
+                                                                avg_bce,
+                                                                avg_kld))
                     log_file.close()
 
             self.n_epochs += 1
