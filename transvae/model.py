@@ -9,7 +9,7 @@ from torch.autograd import Variable
 import tvae_util as uu
 from tvae_util import clones, attention
 from opt import NoamOpt
-from data import data_gen
+from data import data_gen, make_std_mask
 from loss import ce_loss
 
 ####### Encoder, Decoder and Generator ############
@@ -142,12 +142,17 @@ class TransVAE():
             log (bool): If true, writes training metrics to log file
         """
         ### Prepare data iterators
-        train_iter = data_gen(train_data, batch_size=self.params['BATCH_SIZE'],
-                              char_dict=self.params['CHAR_DICT'], pad=self.pad_idx)
-        val_iter = data_gen(val_data, batch_size=self.params['BATCH_SIZE'],
-                            char_dict=self.params['CHAR_DICT'], pad=self.pad_idx)
-        train_iter = list(train_iter)
-        val_iter = list(val_iter)
+        train_data = data_gen(train_data, char_dict=self.params['CHAR_DICT'])
+        val_data = data_gen(val_data, char_dict=self.params['CHAR_DICT'])
+
+        train_iter = torch.utils.data.DataLoader(train_data,
+                                                 batch_size=self.params['BATCH_SIZE'],
+                                                 shuffle=True, num_workers=0,
+                                                 pin_memory=False, drop_last=True)
+        val_iter = torch.utils.data.DataLoader(val_data,
+                                               batch_size=self.params['BATCH_SIZE'],
+                                               shuffle=True, num_workers=0,
+                                               pin_memory=False, drop_last=True)
 
         torch.backends.cudnn.benchmark = True
         use_gpu = torch.cuda.is_available()
@@ -162,12 +167,12 @@ class TransVAE():
                 log_fn = 'trials/log{}.txt'.format('_'+self.name)
             else:
                 log_fn = 'trials/log.txt'
-            already_wrote = False
             try:
                 f = open(log_fn, 'r')
                 f.close()
-            except FileNotFoundError:
                 already_wrote = True
+            except FileNotFoundError:
+                already_wrote = False
             log_file = open(log_fn, 'a')
             if not already_wrote:
                 log_file.write('epoch,batch_idx,data_type,tot_loss,bce_loss,kld_loss\n')
@@ -177,13 +182,18 @@ class TransVAE():
         for epoch in range(epochs):
             ### Train Loop
             self.model.train()
-            for j, batch in enumerate(train_iter):
+            for j, data in enumerate(train_iter):
                 if use_gpu:
-                    batch = batch.cuda()
+                    data = data.cuda()
 
-                x_out, mu, logvar = self.model(batch.src, batch.tgt,
-                                               batch.src_mask, batch.tgt_mask)
-                loss, bce, kld = ce_loss(batch.src, x_out, mu, logvar,
+                src = Variable(data[:,:-1], requires_grad=False).long()
+                tgt = Variable(data[:,1:-1], requires_grad=False).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+                tgt_mask = make_std_mask(tgt, self.pad_idx)
+                scores = Variable(data[:,-1], requires_grad=False)
+
+                x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                loss, bce, kld = ce_loss(src, x_out, mu, logvar,
                                          self.params['CHAR_WEIGHTS'])
                 loss.backward()
                 self.optimizer.step()
@@ -201,13 +211,18 @@ class TransVAE():
             ### Val Loop
             self.model.eval()
             losses = []
-            for j, batch in enumerate(val_iter):
+            for j, data in enumerate(val_iter):
                 if use_gpu:
-                    batch = batch.cuda()
+                    data = data.cuda()
 
-                x_out, mu, logvar = self.model(batch.src, batch.tgt,
-                                               batch.src_mask, batch.tgt_mask)
-                loss, bce, kld = ce_loss(batch.src, x_out, mu, logvar,
+                src = Variable(data[:,:-1], requires_grad=False).long()
+                tgt = Variable(data[:,1:-1], requires_grad=False).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+                tgt_mask = make_std_mask(tgt, self.pad_idx)
+                scores = Variable(data[:,-1], requires_grad=False)
+
+                x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                loss, bce, kld = ce_loss(src, x_out, mu, logvar,
                                          self.params['CHAR_WEIGHTS'])
                 losses.append(loss.item())
 
