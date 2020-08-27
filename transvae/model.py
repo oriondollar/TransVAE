@@ -73,6 +73,9 @@ class TransVAE():
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
         self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator)
+        for p in self.model.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
         self.use_gpu = torch.cuda.is_available()
         if self.use_gpu:
             self.model.cuda()
@@ -82,10 +85,6 @@ class TransVAE():
         self.optimizer = NoamOpt(d_model, 2, 4000,
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
-
-        for p in self.model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
 
     def save(self, state, fn, path='checkpoints'):
         """
