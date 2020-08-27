@@ -294,6 +294,7 @@ class VAEEncoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Adding Convolutional Bottleneck
+        self.conv1, self.conv2, self.conv3 = None, None, None
         self.conv_layers = [self.conv1, self.conv2, self.conv3]
         in_d = layer.size
         first = True
