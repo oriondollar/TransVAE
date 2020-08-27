@@ -5,6 +5,14 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
+def ce_loss(x, x_out, mu, logvar, weights, beta=1):
+    x = x.long()[:,1:] - 1
+    x = x.contiguous().view(-1)
+    x_out = x_out.contiguous().view(-1, x_out.size(2))
+    BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
+    KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    return BCE + KLD, BCE, KLD
+
 class LabelSmoothing(nn.Module):
     "Implement label smoothing"
     def __init__(self, size, padding_idx, smoothing=0.0):
