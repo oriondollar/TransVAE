@@ -7,7 +7,7 @@ import math, copy, time
 from torch.autograd import Variable
 
 import tvae_util as uu
-from tvae_util import clones, attention
+from tvae_util import clones, attention, ListModule
 from opt import NoamOpt
 from data import data_gen, make_std_mask
 from loss import ce_loss
@@ -294,7 +294,7 @@ class VAEEncoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Adding Convolutional Bottleneck
-        self.conv_layers = []
+        conv_layers = []
         in_d = layer.size
         first = True
         for i in range(3):
@@ -306,11 +306,9 @@ class VAEEncoder(nn.Module):
                 kernel_size = 20
             if i == 2:
                 out_d = 64
-            self.conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
+            conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
             in_d = out_d
-        self.conv1 = self.conv_layers[0]
-        self.conv2 = self.conv_layers[1]
-        self.conv3 = self.conv_layers[2]
+        self.conv_layers = ListModule(*conv_layers)
         self.z_means = nn.Linear(320, 128)
         self.z_var = nn.Linear(320, 128)
 
@@ -325,9 +323,8 @@ class VAEEncoder(nn.Module):
             x = layer(x, mask)
         x = self.norm(x)
         x = x.permute(0, 2, 1)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        for conv in self.conv_layers:
+            x = F.relu(conv(x))
         x = x.contiguous().view(x.size(0), -1)
         mu, logvar = self.z_means(x), self.z_var(x)
         z = self.reparameterize(mu, logvar)
@@ -354,21 +351,20 @@ class VAEDecoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Reshaping memory with deconvolution
+        deconv_layers = []
         if layer.size == 256:
-            self.deconv_linear = nn.Linear(128, 256)
+            deconv_layers.append(nn.Linear(128, 256))
         elif layer.size == 512:
-            self.deconv_linear = nn.Linear(128, 512)
-        self.deconv1 = nn.ConvTranspose1d(1, 64, 9, padding=4)
-        self.deconv2 = nn.ConvTranspose1d(64, 128, 9, padding=4)
-        self.deconv3 = nn.ConvTranspose1d(128, 181, 9, padding=4)
-
+            deconv_layers.append(nn.Linear(128, 512))
+        deconv_layers.append(nn.ConvTranspose1d(1, 64, 9, padding=4))
+        deconv_layers.append(nn.ConvTranspose1d(64, 128, 9, padding=4))
+        deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
+        self.deconv_layers = ListModule(*deconv_layers)
 
     def forward(self, x, memory, src_mask, tgt_mask):
         mem = memory.unsqueeze(1)
-        mem = F.relu(self.deconv_linear(mem))
-        mem = F.relu(self.deconv1(mem))
-        mem = F.relu(self.deconv2(mem))
-        mem = F.relu(self.deconv3(mem))
+        for deconv in self.deconv_layers:
+            mem = F.relu(deconv(mem))
         mem = self.norm(mem)
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
