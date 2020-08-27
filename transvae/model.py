@@ -73,6 +73,10 @@ class TransVAE():
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
         self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator)
+        self.use_gpu = torch.cuda.is_available()
+        if self.use_gpu:
+            self.model.cuda()
+            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
         self.optimizer = NoamOpt(d_model, 2, 4000,
@@ -155,10 +159,6 @@ class TransVAE():
                                                pin_memory=False, drop_last=True)
 
         torch.backends.cudnn.benchmark = True
-        use_gpu = torch.cuda.is_available()
-        if use_gpu:
-            self.model.cuda()
-            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Setup log file
         if log:
@@ -183,14 +183,14 @@ class TransVAE():
             ### Train Loop
             self.model.train()
             for j, data in enumerate(train_iter):
-                if use_gpu:
+                if self.use_gpu:
                     data = data.cuda()
 
                 src = Variable(data[:,:-1], requires_grad=False).long()
                 tgt = Variable(data[:,1:-1], requires_grad=False).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2).cuda()
-                tgt_mask = make_std_mask(tgt, self.pad_idx).cuda()
-                scores = Variable(data[:,-1], requires_grad=False).cuda()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+                tgt_mask = make_std_mask(tgt, self.pad_idx)
+                scores = Variable(data[:,-1], requires_grad=False)
 
                 x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
                 loss, bce, kld = ce_loss(src, x_out, mu, logvar,
@@ -212,7 +212,7 @@ class TransVAE():
             self.model.eval()
             losses = []
             for j, data in enumerate(val_iter):
-                if use_gpu:
+                if self.use_gpu:
                     data = data.cuda()
 
                 src = Variable(data[:,:-1], requires_grad=False).long()
