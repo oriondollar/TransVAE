@@ -195,7 +195,7 @@ class TransVAE():
                         batch_data = batch_data.cuda()
 
                     src = Variable(batch_data[:,:-1], requires_grad=False).long()
-                    tgt = Variable(batch_data[:,1:-1], requires_grad=False).long()
+                    tgt = Variable(batch_data[:,:-2], requires_grad=False).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1], requires_grad=False)
@@ -203,6 +203,8 @@ class TransVAE():
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = ce_loss(src, x_out, mu, logvar,
                                              self.params['CHAR_WEIGHTS'])
+                    # print(src[0,1:].long() - 1)
+                    # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -235,7 +237,7 @@ class TransVAE():
                         batch_data = batch_data.cuda()
 
                     src = Variable(batch_data[:,:-1], requires_grad=False).long()
-                    tgt = Variable(batch_data[:,1:-1], requires_grad=False).long()
+                    tgt = Variable(batch_data[:,:-2], requires_grad=False).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1], requires_grad=False)
@@ -310,7 +312,7 @@ class Generator(nn.Module):
         self.proj = nn.Linear(d_model, vocab-1)
 
     def forward(self, x):
-        return F.log_softmax(self.proj(x), dim=-1)
+        return F.softmax(self.proj(x), dim=-1)
 
 class VAEEncoder(nn.Module):
     "Core encoder is a stack of N layers"

@@ -31,10 +31,9 @@ def make_std_mask(tgt, pad):
 
 class Batch:
     "Object for holding a batch of data with mask during training"
-    def __init__(self, src, tgt, scores, pad=0):
+    def __init__(self, src, tgt, pad=0):
         self.src = src
         self.src_mask = (src != pad).unsqueeze(-2)
-        self.scores = scores
         if tgt is not None:
             self.tgt = tgt[:, :-1]
             self.tgt_y = tgt[:, 1:]
