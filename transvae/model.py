@@ -345,7 +345,7 @@ class VAEEncoder(nn.Module):
         eps = torch.randn_like(std)
         return mu * eps*std
 
-    def forward(self, x, mask):
+    def vae_forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
         for i, layer in enumerate(self.layers):
             x = layer(x, mask)
@@ -357,6 +357,13 @@ class VAEEncoder(nn.Module):
         mu, logvar = self.z_means(x), self.z_var(x)
         z = self.reparameterize(mu, logvar)
         return z, mu, logvar
+
+    def forward(self, x, mask):
+        "Bypass the variational bottleneck"
+        for i, layer in enumerate(self.layers):
+            x = layer(x, mask)
+        x = self.norm(x)
+        return x, None, None
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -389,13 +396,20 @@ class VAEDecoder(nn.Module):
         deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
         self.deconv_layers = ListModule(*deconv_layers)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def vae_forward(self, x, memory, src_mask, tgt_mask):
+        "Pass the memory and target into decoder"
         mem = memory.unsqueeze(1)
         for deconv in self.deconv_layers:
             mem = F.relu(deconv(mem))
         mem = self.norm(mem)
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
+        return self.norm(x)
+
+    def forward(self, x, memory, src_mask, tgt_mask):
+        "Bypass the variational bottleneck"
+        for i, layer in enumerate(self.layers):
+            x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
