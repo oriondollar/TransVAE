@@ -1,5 +1,8 @@
 import os
+import shutil
+import imageio
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -132,7 +135,7 @@ class TransVAE():
         self.model.load_state_dict(self.current_state['model_state_dict'])
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
-    def train(self, train_data, val_data, epochs=100, save=True, log=True):
+    def train(self, train_data, val_data, epochs=100, save=True, log=True, make_grad_gif=False):
         """
         Train model and validate
 
@@ -181,10 +184,17 @@ class TransVAE():
                 log_file.write('epoch,batch_idx,data_type,tot_loss,bce_loss,kld_loss\n')
             log_file.close()
 
+        ### Gradient Gif
+        if make_grad_gif:
+            os.makedirs('gif', exist_ok=True)
+            images = []
+            frame = 0
+
         ### Epoch loop
         for epoch in range(epochs):
             ### Train Loop
             self.model.train()
+            losses = []
             for j, data in enumerate(train_iter):
                 avg_losses = []
                 avg_bce_losses = []
@@ -194,11 +204,11 @@ class TransVAE():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1], requires_grad=False).long()
-                    tgt = Variable(batch_data[:,:-2], requires_grad=False).long()
+                    src = Variable(batch_data[:,:-1]).long()
+                    tgt = Variable(batch_data[:,:-2]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
-                    scores = Variable(data[:,-1], requires_grad=False)
+                    scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = ce_loss(src, x_out, mu, logvar,
@@ -209,11 +219,20 @@ class TransVAE():
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
                     loss.backward()
+                if make_grad_gif and j % 100 == 0:
+                    plt = uu.plot_grad_flow(self.model.named_parameters())
+                    plt.title('Epoch {}  Frame {}'.format(epoch+1, frame))
+                    fn = 'gif/{}.png'.format(frame)
+                    plt.savefig(fn)
+                    plt.close()
+                    images.append(imageio.imread(fn))
+                    frame += 1
                 self.optimizer.step()
                 self.model.zero_grad()
                 avg_loss = np.mean(avg_losses)
                 avg_bce = np.mean(avg_bce_losses)
                 avg_kld = np.mean(avg_kld_losses)
+                losses.append(avg_loss)
 
                 if log:
                     log_file = open(log_fn, 'a')
@@ -223,6 +242,7 @@ class TransVAE():
                                                                 avg_bce,
                                                                 avg_kld))
                     log_file.close()
+            train_loss = np.mean(losses)
 
             ### Val Loop
             self.model.eval()
@@ -236,11 +256,11 @@ class TransVAE():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1], requires_grad=False).long()
-                    tgt = Variable(batch_data[:,:-2], requires_grad=False).long()
+                    src = Variable(batch_data[:,:-1]).long()
+                    tgt = Variable(batch_data[:,:-2]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
-                    scores = Variable(data[:,-1], requires_grad=False)
+                    scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = ce_loss(src, x_out, mu, logvar,
@@ -264,6 +284,7 @@ class TransVAE():
 
             self.n_epochs += 1
             val_loss = np.mean(losses)
+            print('Epoch - {} Train - {} Val - {} LR - {}'.format(epoch+1, train_loss, val_loss, self.optimizer.state_dict['rate']))
 
             ### Update current state and save model
             self.current_state['epoch'] = self.n_epochs
@@ -278,6 +299,10 @@ class TransVAE():
 
             if save:
                 self.save(self.current_state, 'latest')
+
+        if make_grad_gif:
+            imageio.mimsave('grads.gif', images)
+            shutil.rmtree('gif')
 
 
 class EncoderDecoder(nn.Module):
@@ -322,23 +347,23 @@ class VAEEncoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Adding Convolutional Bottleneck
-        conv_layers = []
-        in_d = layer.size
-        first = True
-        for i in range(3):
-            out_d = int((in_d - 64) // 2 + 64)
-            if first:
-                kernel_size = 21
-                first = False
-            else:
-                kernel_size = 20
-            if i == 2:
-                out_d = 64
-            conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
-            in_d = out_d
-        self.conv_layers = ListModule(*conv_layers)
-        self.z_means = nn.Linear(320, 128)
-        self.z_var = nn.Linear(320, 128)
+        # conv_layers = []
+        # in_d = layer.size
+        # first = True
+        # for i in range(3):
+        #     out_d = int((in_d - 64) // 2 + 64)
+        #     if first:
+        #         kernel_size = 21
+        #         first = False
+        #     else:
+        #         kernel_size = 20
+        #     if i == 2:
+        #         out_d = 64
+        #     conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
+        #     in_d = out_d
+        # self.conv_layers = ListModule(*conv_layers)
+        # self.z_means = nn.Linear(320, 128)
+        # self.z_var = nn.Linear(320, 128)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -386,15 +411,15 @@ class VAEDecoder(nn.Module):
         self.norm = LayerNorm(layer.size)
 
         # Reshaping memory with deconvolution
-        deconv_layers = []
-        if layer.size == 256:
-            deconv_layers.append(nn.Linear(128, 256))
-        elif layer.size == 512:
-            deconv_layers.append(nn.Linear(128, 512))
-        deconv_layers.append(nn.ConvTranspose1d(1, 64, 9, padding=4))
-        deconv_layers.append(nn.ConvTranspose1d(64, 128, 9, padding=4))
-        deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
-        self.deconv_layers = ListModule(*deconv_layers)
+        # deconv_layers = []
+        # if layer.size == 256:
+        #     deconv_layers.append(nn.Linear(128, 256))
+        # elif layer.size == 512:
+        #     deconv_layers.append(nn.Linear(128, 512))
+        # deconv_layers.append(nn.ConvTranspose1d(1, 64, 9, padding=4))
+        # deconv_layers.append(nn.ConvTranspose1d(64, 128, 9, padding=4))
+        # deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
+        # self.deconv_layers = ListModule(*deconv_layers)
 
     def vae_forward(self, x, memory, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
