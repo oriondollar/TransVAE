@@ -89,7 +89,7 @@ class TransVAE():
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, 2, 4000,
+        self.optimizer = NoamOpt(d_model, 1, 10000,
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
