@@ -56,6 +56,8 @@ class TransVAE():
             print("WARNING: MUST PROVIDE VOCABULARY KEY PRIOR TO TRAINING")
         self.vocab_size = len(self.params['CHAR_DICT'].keys())
         self.pad_idx = self.params['CHAR_DICT']['_']
+        self.src_len = 181
+        self.tgt_len = 180
 
         ### Build empty structures for data storage
         self.n_epochs = 0
@@ -72,8 +74,8 @@ class TransVAE():
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N)
-        decoder = VAEDecoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N)
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N)
+        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
@@ -344,7 +346,7 @@ class VAEEncoder(nn.Module):
     def __init__(self, layer, N):
         super(VAEEncoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+        self.norm = LayerNorm(layer.src_len)
 
         # Adding Convolutional Bottleneck
         # conv_layers = []
@@ -392,12 +394,13 @@ class VAEEncoder(nn.Module):
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
-    def __init__(self, size, self_attn, feed_forward, dropout):
+    def __init__(self, size, src_len, self_attn, feed_forward, dropout):
         super(EncoderLayer, self).__init__()
+        self.size = size
+        self.src_len = src_len
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 2)
-        self.size = size
+        self.sublayer = clones(SublayerConnection(self.src_len, dropout), 2)
 
     def forward(self, x, mask):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
@@ -408,7 +411,7 @@ class VAEDecoder(nn.Module):
     def __init__(self, layer, N):
         super(VAEDecoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+        self.norm = LayerNorm(layer.tgt_len)
 
         # Reshaping memory with deconvolution
         # deconv_layers = []
@@ -439,13 +442,14 @@ class VAEDecoder(nn.Module):
 
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward"
-    def __init__(self, size, self_attn, src_attn, feed_forward, dropout):
+    def __init__(self, size, tgt_len, self_attn, src_attn, feed_forward, dropout):
         super(DecoderLayer, self).__init__()
         self.size = size
+        self.tgt_len = tgt_len
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 3)
+        self.sublayer = clones(SublayerConnection(self.tgt_len, dropout), 3)
 
     def forward(self, x, memory, src_mask, tgt_mask):
         m = memory
@@ -595,7 +599,7 @@ class Encoder(nn.Module):
     def __init__(self, layer, N):
         super(Encoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+        self.norm = LayerNorm(layer.src_len)
 
     def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
@@ -608,7 +612,7 @@ class Decoder(nn.Module):
     def __init__(self, layer, N):
         super(Decoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+        self.norm = LayerNorm(layer.tgt_len)
 
     def forward(self, x, memory, src_mask, tgt_mask):
         for i, layer in enumerate(self.layers):
