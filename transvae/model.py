@@ -412,6 +412,7 @@ class VAEDecoder(nn.Module):
         super(VAEDecoder, self).__init__()
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.tgt_len)
+        self.mem_norm = LayerNorm(layer.tgt_len+1)
 
         # Reshaping memory with deconvolution
         deconv_layers = []
@@ -429,7 +430,7 @@ class VAEDecoder(nn.Module):
         mem = memory.unsqueeze(1)
         for deconv in self.deconv_layers:
             mem = F.relu(deconv(mem))
-        mem = self.norm(mem)
+        mem = self.mem_norm(mem)
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
         return self.norm(x)
