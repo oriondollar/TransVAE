@@ -60,7 +60,7 @@ def smi_tokenizer(smile):
     pattern =  "(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\\\|\/|_|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
     regezz = re.compile(pattern)
     tokens = [token for token in regezz.findall(smile)]
-    assert smile == ''.join(tokens)
+    assert smile == ''.join(tokens), "{}".format(''.join(tokens))
     return tokens
 
 def encode_smiles(smile, max_len, char_dict):
