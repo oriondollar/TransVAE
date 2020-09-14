@@ -13,7 +13,7 @@ import tvae_util as uu
 from tvae_util import clones, attention, ListModule
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss
+from loss import ce_loss, vae_ce_loss
 
 ####### Encoder, Decoder and Generator ############
 
@@ -213,7 +213,7 @@ class TransVAE():
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = ce_loss(src, x_out, mu, logvar,
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
                                              self.params['CHAR_WEIGHTS'])
                     # print(src[0,1:].long() - 1)
                     # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
@@ -265,7 +265,7 @@ class TransVAE():
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = ce_loss(src, x_out, mu, logvar,
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
                                              self.params['CHAR_WEIGHTS'])
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
@@ -349,30 +349,30 @@ class VAEEncoder(nn.Module):
         self.norm = LayerNorm(layer.src_len)
 
         # Adding Convolutional Bottleneck
-        # conv_layers = []
-        # in_d = layer.size
-        # first = True
-        # for i in range(3):
-        #     out_d = int((in_d - 64) // 2 + 64)
-        #     if first:
-        #         kernel_size = 21
-        #         first = False
-        #     else:
-        #         kernel_size = 20
-        #     if i == 2:
-        #         out_d = 64
-        #     conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
-        #     in_d = out_d
-        # self.conv_layers = ListModule(*conv_layers)
-        # self.z_means = nn.Linear(320, 128)
-        # self.z_var = nn.Linear(320, 128)
+        conv_layers = []
+        in_d = layer.size
+        first = True
+        for i in range(3):
+            out_d = int((in_d - 64) // 2 + 64)
+            if first:
+                kernel_size = 21
+                first = False
+            else:
+                kernel_size = 20
+            if i == 2:
+                out_d = 64
+            conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
+            in_d = out_d
+        self.conv_layers = ListModule(*conv_layers)
+        self.z_means = nn.Linear(320, 128)
+        self.z_var = nn.Linear(320, 128)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
         return mu * eps*std
 
-    def vae_forward(self, x, mask):
+    def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
         for i, layer in enumerate(self.layers):
             x = layer(x, mask)
@@ -385,7 +385,7 @@ class VAEEncoder(nn.Module):
         z = self.reparameterize(mu, logvar)
         return z, mu, logvar
 
-    def forward(self, x, mask):
+    def bypass_bottleneck(self, x, mask):
         "Bypass the variational bottleneck"
         for i, layer in enumerate(self.layers):
             x = layer(x, mask)
@@ -414,17 +414,17 @@ class VAEDecoder(nn.Module):
         self.norm = LayerNorm(layer.tgt_len)
 
         # Reshaping memory with deconvolution
-        # deconv_layers = []
-        # if layer.size == 256:
-        #     deconv_layers.append(nn.Linear(128, 256))
-        # elif layer.size == 512:
-        #     deconv_layers.append(nn.Linear(128, 512))
-        # deconv_layers.append(nn.ConvTranspose1d(1, 64, 9, padding=4))
-        # deconv_layers.append(nn.ConvTranspose1d(64, 128, 9, padding=4))
-        # deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
-        # self.deconv_layers = ListModule(*deconv_layers)
+        deconv_layers = []
+        if layer.size == 256:
+            deconv_layers.append(nn.Linear(128, 256))
+        elif layer.size == 512:
+            deconv_layers.append(nn.Linear(128, 512))
+        deconv_layers.append(nn.ConvTranspose1d(1, 64, 9, padding=4))
+        deconv_layers.append(nn.ConvTranspose1d(64, 128, 9, padding=4))
+        deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
+        self.deconv_layers = ListModule(*deconv_layers)
 
-    def vae_forward(self, x, memory, src_mask, tgt_mask):
+    def forward(self, x, memory, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         mem = memory.unsqueeze(1)
         for deconv in self.deconv_layers:
@@ -434,7 +434,7 @@ class VAEDecoder(nn.Module):
             x = layer(x, mem, src_mask, tgt_mask)
         return self.norm(x)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def bypass_bottleneck(self, x, memory, src_mask, tgt_mask):
         "Bypass the variational bottleneck"
         for i, layer in enumerate(self.layers):
             x = layer(x, memory, src_mask, tgt_mask)
