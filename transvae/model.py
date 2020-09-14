@@ -89,7 +89,7 @@ class TransVAE():
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, 1, 10000,
+        self.optimizer = NoamOpt(d_model, 1, 4000,
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
@@ -339,7 +339,7 @@ class Generator(nn.Module):
         self.proj = nn.Linear(d_model, vocab-1)
 
     def forward(self, x):
-        return F.softmax(self.proj(x), dim=-1)
+        return self.proj(x)
 
 class VAEEncoder(nn.Module):
     "Core encoder is a stack of N layers"
