@@ -346,7 +346,7 @@ class VAEEncoder(nn.Module):
     def __init__(self, layer, N):
         super(VAEEncoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.src_len)
+        self.norm = LayerNorm(layer.size)
 
         # Adding Convolutional Bottleneck
         conv_layers = []
@@ -400,7 +400,7 @@ class EncoderLayer(nn.Module):
         self.src_len = src_len
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(self.src_len, dropout), 2)
+        self.sublayer = clones(SublayerConnection(self.size, dropout), 2)
 
     def forward(self, x, mask):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
@@ -411,8 +411,7 @@ class VAEDecoder(nn.Module):
     def __init__(self, layer, N):
         super(VAEDecoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.tgt_len)
-        self.mem_norm = LayerNorm(layer.tgt_len+1)
+        self.norm = LayerNorm(layer.size)
 
         # Reshaping memory with deconvolution
         deconv_layers = []
@@ -430,7 +429,7 @@ class VAEDecoder(nn.Module):
         mem = memory.unsqueeze(1)
         for deconv in self.deconv_layers:
             mem = F.relu(deconv(mem))
-        mem = self.mem_norm(mem)
+        mem = self.norm(mem)
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
         return self.norm(x)
@@ -450,7 +449,7 @@ class DecoderLayer(nn.Module):
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(self.tgt_len, dropout), 3)
+        self.sublayer = clones(SublayerConnection(self.size, dropout), 3)
 
     def forward(self, x, memory, src_mask, tgt_mask):
         m = memory
@@ -535,19 +534,19 @@ class PositionalEncoding(nn.Module):
 
 ############## Utility Layers ####################
 
-class LayerNorm(nn.Module):
+class TorchLayerNorm(nn.Module):
     "Construct a layernorm module (See citation for details)"
     def __init__(self, features, eps=1e-6):
-        super(LayerNorm, self).__init__()
+        super(TorchLayerNorm, self).__init__()
         self.bn = nn.BatchNorm1d(features)
 
     def forward(self, x):
         return self.bn(x)
 
-class PrevLayerNorm(nn.Module):
+class LayerNorm(nn.Module):
     "Construct a layernorm module (See citation for details)"
     def __init__(self, features, eps=1e-6):
-        super(PrevLayerNorm, self).__init__()
+        super(LayerNorm, self).__init__()
         self.a_2 = nn.Parameter(torch.ones(features))
         self.b_2 = nn.Parameter(torch.zeros(features))
         self.eps = eps
@@ -600,7 +599,7 @@ class Encoder(nn.Module):
     def __init__(self, layer, N):
         super(Encoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.src_len)
+        self.norm = LayerNorm(layer.size)
 
     def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
@@ -613,7 +612,7 @@ class Decoder(nn.Module):
     def __init__(self, layer, N):
         super(Decoder, self).__init__()
         self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.tgt_len)
+        self.norm = LayerNorm(layer.size)
 
     def forward(self, x, memory, src_mask, tgt_mask):
         for i, layer in enumerate(self.layers):
