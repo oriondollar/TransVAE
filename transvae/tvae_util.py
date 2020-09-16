@@ -69,6 +69,27 @@ def encode_smiles(smile, max_len, char_dict):
     smile_vec = [char_dict[c] for c in smile]
     return smile_vec
 
+def greedy_decode(model, src, src_mask, max_len, start_symbol):
+    mem, mu, logvar = model.encode(src, src_mask)
+    ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
+    for i in range(max_len-1):
+        out = model.decode(mem, src_mask, Variable(ys),
+                           Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
+        out = model.generator(out)
+        prob = F.softmax(out[:, -1], dim=-1)
+        _, next_word = torch.max(prob, dim=1)
+        next_word = next_word.item() + 1
+        ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
+    return ys
+
+def decode_smiles(encoded_tensor, org_dict):
+    encoded_tensor = encoded_tensor.numpy()[0,1:] - 1
+    smile = ''
+    for i in range(encoded_tensor.shape[0]):
+        idx = encoded_tensor[i]
+        smile += org_dict[idx]
+    smile = smile.replace('_', '')
+    return smile
 
 ####### GRADIENT TROUBLESHOOTING #########
 
