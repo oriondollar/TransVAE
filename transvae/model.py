@@ -49,6 +49,10 @@ class TransVAE():
             self.params['BATCH_CHUNKS'] = 5
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
+        if 'LR' not in self.params.keys():
+            self.params['LR'] = 25
+        if 'WARMUP_STEPS' not in self.params.keys():
+            self.params['WARMUP_STEPS'] = 16000
         if 'CHAR_WEIGHTS' in self.params.keys():
             self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
         else:
@@ -90,7 +94,7 @@ class TransVAE():
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, 1, 4000,
+        self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
