@@ -12,9 +12,9 @@ def data_gen(data, char_dict):
     scores = torch.tensor(data[:,1].astype('float32'))
     del data
     smiles = [smi_tokenizer(x) for x in smiles]
-    encoded_data = torch.empty((len(smiles), 181))
+    encoded_data = torch.empty((len(smiles), 127))
     for j, smi in enumerate(smiles):
-        encoded_smi = encode_smiles(smi, 180, char_dict)
+        encoded_smi = encode_smiles(smi, 126, char_dict)
         encoded_smi = [0] + encoded_smi
         encoded_data[j,:] = torch.tensor(encoded_smi)
     data = torch.tensor(np.concatenate([encoded_data, scores.reshape(-1,1)], axis=1))

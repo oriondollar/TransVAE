@@ -1,11 +1,16 @@
 import re
+import math
+import copy
+import time
 import imageio
 import numpy as np
 import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math, copy, time
 from torch.autograd import Variable
 
 ######## MODEL HELPERS ##########
@@ -90,6 +95,30 @@ def decode_smiles(encoded_tensor, org_dict):
         smile += org_dict[idx]
     smile = smile.replace('_', '')
     return smile
+
+def get_char_weights(train_smiles, params, freq_penalty=0.5):
+    char_dist = {}
+    char_counts = np.zeros((params['NUM_CHAR'],))
+    char_weights = np.zeros((params['NUM_CHAR'],))
+    for k in params['CHAR_DICT'].keys():
+        char_dist[k] = 0
+    for smile in train_smiles:
+        for i, char in enumerate(smile):
+            char_dist[char] += 1
+        for j in range(i, params['MAX_LENGTH']):
+            char_dist['_'] += 1
+    for i, v in enumerate(char_dist.values()):
+        char_counts[i] = v
+    top = np.sum(np.log(char_counts))
+    for i in range(char_counts.shape[0]):
+        char_weights[i] = top / np.log(char_counts[i])
+    min_weight = char_weights.min()
+    for i, w in enumerate(char_weights):
+        if w > 2*min_weight:
+            char_weights[i] = 2*min_weight
+    scaler = MinMaxScaler([freq_penalty,1.0])
+    char_weights = scaler.fit_transform(char_weights.reshape(-1, 1))
+    return char_weights[:,0]
 
 ####### GRADIENT TROUBLESHOOTING #########
 

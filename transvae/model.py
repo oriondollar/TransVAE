@@ -50,9 +50,9 @@ class TransVAE():
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
         if 'LR' not in self.params.keys():
-            self.params['LR'] = 25
+            self.params['LR'] = 1
         if 'WARMUP_STEPS' not in self.params.keys():
-            self.params['WARMUP_STEPS'] = 16000
+            self.params['WARMUP_STEPS'] = 10000
         if 'CHAR_WEIGHTS' in self.params.keys():
             self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
         else:
@@ -360,10 +360,10 @@ class VAEEncoder(nn.Module):
         for i in range(3):
             out_d = int((in_d - 64) // 2 + 64)
             if first:
-                kernel_size = 17
+                kernel_size = 9
                 first = False
             else:
-                kernel_size = 16
+                kernel_size = 8
             if i == 2:
                 out_d = 64
             conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
@@ -425,11 +425,10 @@ class VAEDecoder(nn.Module):
         for i in range(3):
             out_d = (layer.size - in_d) // 4 + in_d
             stride = 4 - i
-            kernel_size = 22
+            kernel_size = 11
             if i == 2:
                 out_d = layer.size
                 stride = 1
-                kernel_size = 21
             deconv_layers.append(nn.Sequential(nn.ConvTranspose1d(in_d, out_d, kernel_size, stride=stride, padding=2)))
             in_d = out_d
         self.deconv_layers = ListModule(*deconv_layers)
