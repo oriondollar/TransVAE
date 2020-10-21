@@ -23,7 +23,8 @@ class TransVAE():
     latent space
     """
     def __init__(self, params, name=None, N=3, d_model=512, d_ff=2048,
-                 d_latent=128, h=8, dropout=0.1, bypass_bottleneck=False):
+                 d_latent=128, h=8, dropout=0.1, bypass_bottleneck=False,
+                 bottleneck_type='convolution'):
         """
         Instatiating a TransVAE object builds the model architecture, data structs
         to store the model parameters and training information and initiates model
@@ -79,8 +80,8 @@ class TransVAE():
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
-        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, bottleneck_type)
+        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, bottleneck_type)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
@@ -348,11 +349,12 @@ class Generator(nn.Module):
 
 class VAEEncoder(nn.Module):
     "Core encoder is a stack of N layers"
-    def __init__(self, layer, N, d_latent, bypass_bottleneck):
+    def __init__(self, layer, N, d_latent, bypass_bottleneck, bottleneck_type):
         super(VAEEncoder, self).__init__()
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
         self.bypass_bottleneck = bypass_bottleneck
+        self.bottleneck_type = bottleneck_type
 
         # Adding Convolutional Bottleneck
         conv_layers = []
@@ -370,6 +372,12 @@ class VAEEncoder(nn.Module):
             conv_layers.append(nn.Sequential(nn.Conv1d(in_d, out_d, kernel_size), nn.MaxPool1d(2)))
             in_d = out_d
         self.conv_layers = ListModule(*conv_layers)
+
+        # Adding Linear Bottleneck
+        linear_layers = []
+        linear_layers.append(nn.Linear(layer.size, 6))
+        linear_layers.append(nn.Linear(762, 576))
+        self.linear_layers = ListModule(*linear_layers)
         self.z_means = nn.Linear(576, d_latent)
         self.z_var = nn.Linear(576, d_latent)
 
@@ -386,21 +394,21 @@ class VAEEncoder(nn.Module):
         if self.bypass_bottleneck:
             z = x
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
-        else:
+        elif self.bottleneck_type == 'convolution':
             x = x.permute(0, 2, 1)
             for conv in self.conv_layers:
                 x = F.relu(conv(x))
             x = x.contiguous().view(x.size(0), -1)
             mu, logvar = self.z_means(x), self.z_var(x)
             z = self.reparameterize(mu, logvar)
+        elif self.bottleneck_type == 'linear':
+            for i, lin in enumerate(self.linear_layers):
+                if i == len(self.linear_layers) - 1:
+                    x = x.contiguous().view(x.size(0), -1)
+                x = F.relu(lin(x))
+            mu, logvar = self.z_means(x), self.z_var(x)
+            z = self.reparameterize(mu, logvar)
         return z, mu, logvar
-
-    # def bypass_bottleneck(self, x, mask):
-    #     "Bypass the variational bottleneck"
-    #     for i, layer in enumerate(self.layers):
-    #         x = layer(x, mask)
-    #     x = self.norm(x)
-    #     return x, None, None
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -418,11 +426,12 @@ class EncoderLayer(nn.Module):
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
-    def __init__(self, layer, N, d_latent, bypass_bottleneck):
+    def __init__(self, layer, N, d_latent, bypass_bottleneck, bottleneck_type):
         super(VAEDecoder, self).__init__()
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
         self.bypass_bottleneck = bypass_bottleneck
+        self.bottleneck_type = bottleneck_type
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
@@ -438,6 +447,10 @@ class VAEDecoder(nn.Module):
             deconv_layers.append(nn.Sequential(nn.ConvTranspose1d(in_d, out_d, kernel_size, stride=stride, padding=2)))
             in_d = out_d
         self.deconv_layers = ListModule(*deconv_layers)
+
+        # Reshaping memory with linear layers
+        self.linear_reshape = nn.Linear(576, 762)
+        self.linear_bottleneck = nn.Linear(6, layer.size)
 
         # Original deconvolutional bottleneck
         # deconv_layers = []
@@ -455,12 +468,18 @@ class VAEDecoder(nn.Module):
     def forward(self, x, mem, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
-            mem = F.relu(self.linear(mem))
-            mem = mem.view(-1, 64, 9)
-            for deconv in self.deconv_layers:
-                mem = F.relu(deconv(mem))
-            mem = mem.permute(0, 2, 1)
-            mem = self.norm(mem)
+            if self.bottleneck_type == 'convolution':
+                mem = F.relu(self.linear(mem))
+                mem = mem.view(-1, 64, 9)
+                for deconv in self.deconv_layers:
+                    mem = F.relu(deconv(mem))
+                mem = mem.permute(0, 2, 1)
+                mem = self.norm(mem)
+            elif self.bottleneck_type == 'linear':
+                mem = F.relu(self.linear(mem))
+                mem = F.relu(self.linear_reshape(mem))
+                mem = mem.view(-1, 127, 6)
+                mem = F.relu(self.linear_bottleneck(mem))
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
         return self.norm(x)
