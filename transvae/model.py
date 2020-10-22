@@ -24,7 +24,8 @@ class TransVAE():
     """
     def __init__(self, params, name=None, N=3, d_model=512, d_ff=2048,
                  d_latent=128, h=8, dropout=0.1, bypass_bottleneck=False,
-                 bottleneck_type='convolution'):
+                 enc_bottleneck_type='convolution',
+                 dec_bottleneck_type='convolution'):
         """
         Instatiating a TransVAE object builds the model architecture, data structs
         to store the model parameters and training information and initiates model
@@ -80,8 +81,8 @@ class TransVAE():
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, bottleneck_type)
-        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, bottleneck_type)
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, enc_bottleneck_type)
+        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, dec_bottleneck_type)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
@@ -432,17 +433,19 @@ class VAEDecoder(nn.Module):
         self.norm = LayerNorm(layer.size)
         self.bypass_bottleneck = bypass_bottleneck
         self.bottleneck_type = bottleneck_type
+        self.size = layer.size
+        self.tgt_len = layer.tgt_len
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
         deconv_layers = []
         in_d = 64
         for i in range(3):
-            out_d = (layer.size - in_d) // 4 + in_d
+            out_d = (self.size - in_d) // 4 + in_d
             stride = 4 - i
             kernel_size = 11
             if i == 2:
-                out_d = layer.size
+                out_d = self.size
                 stride = 1
             deconv_layers.append(nn.Sequential(nn.ConvTranspose1d(in_d, out_d, kernel_size, stride=stride, padding=2)))
             in_d = out_d
@@ -450,7 +453,10 @@ class VAEDecoder(nn.Module):
 
         # Reshaping memory with linear layers
         self.linear_reshape = nn.Linear(576, 762)
-        self.linear_bottleneck = nn.Linear(6, layer.size)
+        self.linear_bottleneck = nn.Linear(6, self.size)
+
+        # Reshaping memory with single linear layer
+        self.massive_linear = nn.Linear(d_latent, (self.tgt_len+2)*self.size)
 
         # Original deconvolutional bottleneck
         # deconv_layers = []
@@ -480,6 +486,9 @@ class VAEDecoder(nn.Module):
                 mem = F.relu(self.linear_reshape(mem))
                 mem = mem.view(-1, 127, 6)
                 mem = F.relu(self.linear_bottleneck(mem))
+            elif self.bottleneck_type == 'massive_linear':
+                mem = F.relu(self.massive_linear(mem))
+                mem = mem.view(-1, self.tgt_len+2, self.size)
         for i, layer in enumerate(self.layers):
             x = layer(x, mem, src_mask, tgt_mask)
         return self.norm(x)
