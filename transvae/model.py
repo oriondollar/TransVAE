@@ -328,16 +328,16 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        z, mu, logvar = self.encode(src, src_mask)
-        x = self.decode(z, src_mask, tgt, tgt_mask)
+        mem_key, mem_val, mu, logvar = self.encode(src, src_mask)
+        x = self.decode(mem_key, mem_val, src_mask, tgt, tgt_mask)
         x = self.generator(x)
         return x, mu, logvar
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
 
-    def decode(self, memory, src_mask, tgt, tgt_mask):
-        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+    def decode(self, mem_key, mem_val, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), mem_key, mem_val, src_mask, tgt_mask)
 
 class Generator(nn.Module):
     "Define standard linear + softmax generation step"
@@ -392,24 +392,25 @@ class VAEEncoder(nn.Module):
         for i, layer in enumerate(self.layers):
             x = layer(x, mask)
         x = self.norm(x)
+        mem_key = x.clone()
+        mem_val = x.clone()
         if self.bypass_bottleneck:
-            z = x
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         elif self.bottleneck_type == 'convolution':
-            x = x.permute(0, 2, 1)
+            mem_val = mem_val.permute(0, 2, 1)
             for conv in self.conv_layers:
-                x = F.relu(conv(x))
-            x = x.contiguous().view(x.size(0), -1)
-            mu, logvar = self.z_means(x), self.z_var(x)
-            z = self.reparameterize(mu, logvar)
+                mem_val = F.relu(conv(mem_val))
+            mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
+            mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
+            mem_val = self.reparameterize(mu, logvar)
         elif self.bottleneck_type == 'linear':
             for i, lin in enumerate(self.linear_layers):
                 if i == len(self.linear_layers) - 1:
-                    x = x.contiguous().view(x.size(0), -1)
-                x = F.relu(lin(x))
-            mu, logvar = self.z_means(x), self.z_var(x)
-            z = self.reparameterize(mu, logvar)
-        return z, mu, logvar
+                    mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
+                mem_val = F.relu(lin(mem_val))
+            mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
+            mem_val = self.reparameterize(mu, logvar)
+        return mem_key, mem_val, mu, logvar
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -471,26 +472,26 @@ class VAEDecoder(nn.Module):
         # deconv_layers.append(nn.ConvTranspose1d(128, 181, 9, padding=4))
         # self.deconv_layers = ListModule(*deconv_layers)
 
-    def forward(self, x, mem, src_mask, tgt_mask):
+    def forward(self, x, m_key, m_val, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
             if self.bottleneck_type == 'convolution':
-                mem = F.relu(self.linear(mem))
-                mem = mem.view(-1, 64, 9)
+                m_val = F.relu(self.linear(m_val))
+                m_val = m_val.view(-1, 64, 9)
                 for deconv in self.deconv_layers:
-                    mem = F.relu(deconv(mem))
-                mem = mem.permute(0, 2, 1)
-                mem = self.norm(mem)
+                    m_val = F.relu(deconv(m_val))
+                m_val = m_val.permute(0, 2, 1)
+                m_val = self.norm(m_val)
             elif self.bottleneck_type == 'linear':
-                mem = F.relu(self.linear(mem))
-                mem = F.relu(self.linear_reshape(mem))
-                mem = mem.view(-1, 127, 6)
-                mem = F.relu(self.linear_bottleneck(mem))
+                m_val = F.relu(self.linear(m_val))
+                m_val = F.relu(self.linear_reshape(m_val))
+                m_val = m_val.view(-1, 127, 6)
+                m_val = F.relu(self.linear_bottleneck(m_val))
             elif self.bottleneck_type == 'massive_linear':
-                mem = F.relu(self.massive_linear(mem))
-                mem = mem.view(-1, self.tgt_len+2, self.size)
+                m_val = F.relu(self.massive_linear(m_val))
+                m_val = m_val.view(-1, self.tgt_len+2, self.size)
         for i, layer in enumerate(self.layers):
-            x = layer(x, mem, src_mask, tgt_mask)
+            x = layer(x, m_key, m_val, src_mask, tgt_mask)
         return self.norm(x)
 
     # Original deconvolutional bottleneck
@@ -524,10 +525,11 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(self.size, dropout), 3)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
-        m = memory
+    def forward(self, x, memory_key, memory_val, src_mask, tgt_mask):
+        m_key = memory_key
+        m_val = memory_val
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
+        x = self.sublayer[1](x, lambda x: self.src_attn(x, m_key, m_val, src_mask))
         return self.sublayer[2](x, self.feed_forward)
 
 ############## Attention and FeedForward ################
