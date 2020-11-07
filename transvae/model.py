@@ -55,6 +55,8 @@ class TransVAE():
             self.params['LR'] = 1
         if 'WARMUP_STEPS' not in self.params.keys():
             self.params['WARMUP_STEPS'] = 10000
+        if 'EPS_SCALE' not in self.params.keys():
+            self.params['EPS_SCALE'] = 1
         if 'CHAR_WEIGHTS' in self.params.keys():
             self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
         else:
@@ -81,7 +83,7 @@ class TransVAE():
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, enc_bottleneck_type)
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, enc_bottleneck_type, self.params['EPS_SCALE'])
         decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, dec_bottleneck_type)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
@@ -350,12 +352,13 @@ class Generator(nn.Module):
 
 class VAEEncoder(nn.Module):
     "Core encoder is a stack of N layers"
-    def __init__(self, layer, N, d_latent, bypass_bottleneck, bottleneck_type):
+    def __init__(self, layer, N, d_latent, bypass_bottleneck, bottleneck_type, eps_scale):
         super(VAEEncoder, self).__init__()
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
         self.bypass_bottleneck = bypass_bottleneck
         self.bottleneck_type = bottleneck_type
+        self.eps_scale = eps_scale
 
         # Adding Convolutional Bottleneck
         conv_layers = []
@@ -382,9 +385,9 @@ class VAEEncoder(nn.Module):
         self.z_means = nn.Linear(576, d_latent)
         self.z_var = nn.Linear(576, d_latent)
 
-    def reparameterize(self, mu, logvar):
+    def reparameterize(self, mu, logvar, eps_scale=1):
         std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
+        eps = torch.randn_like(std) * eps_scale
         return mu * eps*std
 
     def forward(self, x, mask):
@@ -402,14 +405,14 @@ class VAEEncoder(nn.Module):
                 mem_val = F.relu(conv(mem_val))
             mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
             mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
-            mem_val = self.reparameterize(mu, logvar)
+            mem_val = self.reparameterize(mu, logvar, self.eps_scale)
         elif self.bottleneck_type == 'linear':
             for i, lin in enumerate(self.linear_layers):
                 if i == len(self.linear_layers) - 1:
                     mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
                 mem_val = F.relu(lin(mem_val))
             mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
-            mem_val = self.reparameterize(mu, logvar)
+            mem_val = self.reparameterize(mu, logvar, self.eps_scale)
         return mem_key, mem_val, mu, logvar
 
 class EncoderLayer(nn.Module):
