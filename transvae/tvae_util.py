@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+
 ######## MODEL HELPERS ##########
 
 def clones(module, N):
@@ -75,10 +76,10 @@ def encode_smiles(smile, max_len, char_dict):
     return smile_vec
 
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
-    mem, mu, logvar = model.encode(src, src_mask)
+    mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
     ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len-1):
-        out = model.decode(mem, src_mask, Variable(ys),
+        out = model.decode(mem_key, mem_val, src_mask, Variable(ys),
                            Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
         out = model.generator(out)
         prob = F.softmax(out[:, -1], dim=-1)
