@@ -191,7 +191,7 @@ class RNNAttnDecoder(nn.Module):
     def forward(self, tgt, mem, h):
         if not self.bypass_bottleneck:
             mem = F.relu(self.linear(mem))
-            mem = mem.view(-1, 64, 9)
+            mem = mem.contiguous().view(-1, 64, 9)
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
             mem = self.norm(mem)
@@ -259,7 +259,7 @@ class RNNDecoder(nn.Module):
     def forward(self, tgt, mem, h):
         if not self.bypass_bottleneck:
             mem = F.relu(self.unbottleneck(mem))
-            mem = mem.view(mem.shape[0], self.n_layers, -1)
+            mem = mem.contiguous().view(mem.shape[0], self.n_layers, -1)
             mem = mem.permute(1, 0, 2)
             mem = self.norm(mem)
         embedded = self.dropout(tgt)
