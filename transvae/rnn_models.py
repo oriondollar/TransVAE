@@ -260,7 +260,7 @@ class RNNDecoder(nn.Module):
         if not self.bypass_bottleneck:
             mem = F.relu(self.unbottleneck(mem))
             mem = mem.contiguous().view(mem.shape[0], self.n_layers, -1)
-            mem = mem.permute(1, 0, 2)
+            mem = mem.contiguous().permute(1, 0, 2)
             mem = self.norm(mem)
         embedded = self.dropout(tgt)
         embedded = embedded.permute(1, 0, 2)
