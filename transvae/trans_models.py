@@ -328,6 +328,40 @@ class TransVAE(VAEShell):
                                  betas=(0.9,0.98), eps=1e-9))
 
 
+    def decode(self, data, method='greedy', return_str=True):
+        """
+        Method for encoding input smiles into memory and decoding back
+        into smiles
+
+        Arguments:
+            data (np.array, required): Input array consisting of smiles and property
+            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
+        """
+        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+        src = Variable(data[:,:-1]).long()
+        src_mask = (src != self.pad_idx).unsqueeze(-2)
+        start_symbol = self.params['CHAR_DICT']['<start>']
+        max_len = self.src_len
+
+        ### Run through encoder to get memory keys and values
+        mem_key, mem_val, _, _ = self.model.encode(src, src_mask)
+
+        decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
+        for i in range(max_len):
+            out = self.model.decode(mem_key, mem_val, src_mask, Variable(decoded),
+                                    Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
+            out = self.model.generator(out)
+            prob = F.softmax(out[:,-1,:], dim=-1)
+            _, next_word = torch.max(prob, dim=1)
+            next_word += 1
+            next_word = next_word.unsqueeze(1)
+            decoded = torch.cat([decoded, next_word], dim=1)
+            
+        decoded = decoded[:,1:]
+        if return_str:
+            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+        return decoded
+
 class EncoderDecoder(nn.Module):
     """
     A standard Encoder-Decoder architecture

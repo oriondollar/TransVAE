@@ -75,28 +75,6 @@ def encode_smiles(smile, max_len, char_dict):
     smile_vec = [char_dict[c] for c in smile]
     return smile_vec
 
-def greedy_decode(model, src, src_mask, max_len, start_symbol):
-    mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
-    ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
-    for i in range(max_len-1):
-        out = model.decode(mem_key, mem_val, src_mask, Variable(ys),
-                           Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
-        out = model.generator(out)
-        prob = F.softmax(out[:, -1], dim=-1)
-        _, next_word = torch.max(prob, dim=1)
-        next_word = next_word.item() + 1
-        ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
-    return ys
-
-def decode_smiles(encoded_tensor, org_dict):
-    encoded_tensor = encoded_tensor.numpy()[0,1:] - 1
-    smile = ''
-    for i in range(encoded_tensor.shape[0]):
-        idx = encoded_tensor[i]
-        smile += org_dict[idx]
-    smile = smile.replace('_', '')
-    return smile
-
 def get_char_weights(train_smiles, params, freq_penalty=0.5):
     char_dist = {}
     char_counts = np.zeros((params['NUM_CHAR'],))
@@ -120,6 +98,66 @@ def get_char_weights(train_smiles, params, freq_penalty=0.5):
     scaler = MinMaxScaler([freq_penalty,1.0])
     char_weights = scaler.fit_transform(char_weights.reshape(-1, 1))
     return char_weights[:,0]
+
+
+####### POSTPROCESSING HELPERS ##########
+
+def decode_smiles(encoded_tensors, org_dict):
+    smiles = []
+    for i in range(encoded_tensors.shape[0]):
+        encoded_tensor = encoded_tensors.numpy()[i,:] - 1
+        smile = ''
+        for i in range(encoded_tensor.shape[0]):
+            idx = encoded_tensor[i]
+            smile += org_dict[idx]
+        smile = smile.replace('_', '')
+        smiles.append(smile)
+    return smiles
+
+def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
+    smile_accs = []
+    hits = 0
+    misses = 0
+    position_accs = np.zeros((2, max_len))
+    for in_smi, out_smi in zip(input_smiles, output_smiles):
+        if in_smi == out_smi:
+            smile_accs.append(1)
+        else:
+            smile_accs.append(0)
+
+        misses += abs(len(in_smi) - len(out_smi))
+        for j, (token_in, token_out) in enumerate(zip(in_smi, out_smi)):
+            if token_in == token_out:
+                hits += 1
+                position_accs[0,j] += 1
+            else:
+                misses += 1
+            position_accs[1,j] += 1
+
+    smile_acc = np.mean(smile_accs)
+    token_acc = hits / (hits + misses)
+    position_acc = []
+    for i in range(position_accs.shape[1]):
+        position_acc.append(position_accs[0,i] / position_accs[1,i])
+    return smile_acc, token_acc, position_acc
+
+
+
+
+def greedy_decode(model, src, src_mask, max_len, start_symbol):
+    mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
+    ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
+    for i in range(max_len-1):
+        out = model.decode(mem_key, mem_val, src_mask, Variable(ys),
+                           Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
+        out = model.generator(out)
+        prob = F.softmax(out[:, -1], dim=-1)
+        _, next_word = torch.max(prob, dim=1)
+        next_word = next_word.item() + 1
+        ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
+    return ys
+
+
 
 ####### GRADIENT TROUBLESHOOTING #########
 
