@@ -263,7 +263,7 @@ class RNNDecoder(nn.Module):
             mem = mem.contiguous().permute(1, 0, 2)
             mem = self.norm(mem)
         embedded = self.dropout(tgt)
-        embedded = embedded.permute(1, 0, 2)
+        embedded = embedded.contiguous().permute(1, 0, 2)
         x, h = self.gru(embedded, mem)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
