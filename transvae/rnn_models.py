@@ -256,22 +256,25 @@ class RNNAttnDecoder(nn.Module):
         self.norm = LayerNorm(size)
 
     def forward(self, tgt, mem, h):
+        h = self.initH(mem.shape[0])
         if not self.bypass_bottleneck:
             mem = F.relu(self.linear(mem))
             mem = mem.contiguous().view(-1, 64, 9)
             mem = self.deconv_bottleneck(mem)
-            mem = mem.permute(0, 2, 1)
+            mem = mem.permute(2, 0, 1)
             mem = self.norm(mem)
-        embedded = self.dropout(tgt)
-        prev_mem = mem[:,:-1,:]
-        attn_weights = F.softmax(self.attn(torch.cat((embedded, prev_mem), 2)), dim=2)
-        attn_applied = torch.bmm(attn_weights, prev_mem)
-        x = F.relu(attn_applied)
-        x = x.permute(1, 0, 2)
-        x, h = self.gru(x, h)
+        out_mem = mem[:-1,:,:]
+        # attn_weights = F.softmax(self.attn(torch.cat((embedded, prev_mem), 2)), dim=2)
+        # attn_applied = torch.bmm(attn_weights, prev_mem)
+        # x = F.relu(attn_applied)
+        # x = x.permute(1, 0, 2)
+        x, h = self.gru(out_mem, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
         return x, h
+
+    def initH(self, batch_size):
+        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNEncoder(nn.Module):
     def __init__(self, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
