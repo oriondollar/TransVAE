@@ -43,6 +43,10 @@ class GruaVAE(VAEShell):
             bypass_bottleneck (bool): If false, model functions as standard autoencoder
         """
 
+        ### Set learning rate for Adam optimizer
+        if 'ADAM_LR' not in self.params.keys():
+            self.params['ADAM_LR'] = 3e-5
+
         ### Sequence length hard-coded into model
         self.src_len = 127
         self.tgt_len = 126
@@ -64,9 +68,8 @@ class GruaVAE(VAEShell):
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
-                                 torch.optim.Adam(self.model.parameters(), lr=0,
-                                 betas=(0.9,0.98), eps=1e-9))
+        self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
+                                  self.params['ADAM_LR'], optim.Adam)
 
     def decode(self, data, method='greedy', return_str=True):
         """
@@ -109,7 +112,7 @@ class GruVAE(VAEShell):
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-4
+            self.params['ADAM_LR'] = 3e-5
 
         ### Sequence length hard-coded into model
         self.src_len = 127
@@ -353,7 +356,7 @@ class MosesVAE(VAEShell):
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-4
+            self.params['ADAM_LR'] = 3e-5
 
         ### Sequence length hard-coded into model
         self.src_len = 127
