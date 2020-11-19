@@ -57,6 +57,18 @@ class NoamOpt:
     def load_state_dict(self, state_dict):
         self.state_dict = state_dict
 
+class AdamOpt:
+    def __init__(self, params, lr, optimizer):
+        self.optimizer = optimizer(params, lr)
+        self.state_dict = self.optimizer.state_dict()
+
+    def step(self):
+        self.optimizer.step()
+        self.state_dict = self.optimizer.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.state_dict = state_dict
+
 def get_std_opt(model):
     return NoamOpt(model.src_embed[0].d_model, 2, 4000,
             torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))

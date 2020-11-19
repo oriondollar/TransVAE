@@ -249,7 +249,7 @@ class VAEShell():
 
             self.n_epochs += 1
             val_loss = np.mean(losses)
-            print('Epoch - {} Train - {} Val - {} LR - {}'.format(epoch+1, train_loss, val_loss, self.optimizer.state_dict['rate']))
+            print('Epoch - {} Train - {} Val - {}'.format(epoch+1, train_loss, val_loss))
 
             ### Update current state and save model
             self.current_state['epoch'] = self.n_epochs
@@ -356,7 +356,7 @@ class TransVAE(VAEShell):
             next_word += 1
             next_word = next_word.unsqueeze(1)
             decoded = torch.cat([decoded, next_word], dim=1)
-            
+
         decoded = decoded[:,1:]
         if return_str:
             decoded = decode_smiles(decoded, self.params['ORG_DICT'])

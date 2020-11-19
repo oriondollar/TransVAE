@@ -5,12 +5,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
 from tvae_util import *
-from opt import NoamOpt
+from opt import NoamOpt, AdamOpt
 from data import data_gen
 from loss import ce_loss, vae_ce_loss
 from trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, Embeddings, LayerNorm
@@ -106,6 +107,10 @@ class GruVAE(VAEShell):
                  d_latent=128, dropout=0.1, bypass_bottleneck=False):
         super().__init__(params, name)
 
+        ### Set learning rate for Adam optimizer
+        if 'ADAM_LR' not in self.params.keys():
+            self.params['ADAM_LR'] = 3e-4
+
         ### Sequence length hard-coded into model
         self.src_len = 127
         self.tgt_len = 126
@@ -127,9 +132,8 @@ class GruVAE(VAEShell):
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
-                                 torch.optim.Adam(self.model.parameters(), lr=0,
-                                 betas=(0.9,0.98), eps=1e-9))
+        self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
+                                  self.params['ADAM_LR'], optim.Adam)
 
     def decode(self, data, method='greedy', return_str=True):
         """
@@ -344,6 +348,10 @@ class MosesVAE(VAEShell):
                  d_latent=128, dropout=0.1, bypass_bottleneck=False):
         super().__init__(params, name)
 
+        ### Set learning rate for Adam optimizer
+        if 'ADAM_LR' not in self.params.keys():
+            self.params['ADAM_LR'] = 3e-4
+
         ### Sequence length hard-coded into model
         self.src_len = 127
         self.tgt_len = 126
@@ -365,9 +373,8 @@ class MosesVAE(VAEShell):
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
-                                 torch.optim.Adam(self.model.parameters(), lr=0,
-                                 betas=(0.9,0.98), eps=1e-9))
+        self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
+                                  self.params['ADAM_LR'], optim.Adam)
 
     def decode(self, data, method='greedy', return_str=True):
         """
