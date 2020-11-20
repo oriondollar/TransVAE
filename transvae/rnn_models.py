@@ -255,23 +255,27 @@ class RNNAttnDecoder(nn.Module):
         self.deconv_bottleneck = DeconvBottleneck(size)
         self.attn = nn.Linear(self.size * 2, self.max_length)
         self.dropout = nn.Dropout(p=dropout)
-        self.gru = nn.GRU(self.size, self.size, num_layers=N, dropout=dropout)
+        self.gru = nn.GRU(self.size * 2, self.size, num_layers=N, dropout=dropout)
         self.norm = LayerNorm(size)
 
     def forward(self, tgt, mem, h):
+        embedded = self.dropout(tgt)
         h = self.initH(mem.shape[0])
         if not self.bypass_bottleneck:
             mem = F.relu(self.linear(mem))
             mem = mem.contiguous().view(-1, 64, 9)
             mem = self.deconv_bottleneck(mem)
-            mem = mem.permute(2, 0, 1)
+            mem = mem.permute(0, 2, 1)
             mem = self.norm(mem)
-        out_mem = mem[:-1,:,:]
-        # attn_weights = F.softmax(self.attn(torch.cat((embedded, prev_mem), 2)), dim=2)
-        # attn_applied = torch.bmm(attn_weights, prev_mem)
+        out_mem = mem[:,:-1,:]
+        # attn_weights = F.softmax(self.attn(torch.cat((embedded, out_mem), 2)), dim=2)
+        # attn_applied = torch.bmm(attn_weights, out_mem)
         # x = F.relu(attn_applied)
         # x = x.permute(1, 0, 2)
-        x, h = self.gru(out_mem, h)
+        mem_emb = torch.cat((embedded, out_mem), dim=2)
+        mem_emb = mem_emb.permute(1, 0, 2)
+        mem_emb = mem_emb.contiguous()
+        x, h = self.gru(mem_emb, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
         return x, h
@@ -322,20 +326,23 @@ class RNNDecoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
-        self.gru = nn.GRU(self.size, self.size, num_layers=N, dropout=dropout)
+        self.gru = nn.GRU(self.size * 2, self.size, num_layers=N, dropout=dropout)
         self.unbottleneck = nn.Linear(d_latent, size)
         self.dropout = nn.Dropout(dropout)
         self.norm = LayerNorm(size)
 
     def forward(self, tgt, mem, h):
         h = self.initH(mem.shape[0])
+        embedded = self.dropout(tgt)
         if not self.bypass_bottleneck:
             mem = F.relu(self.unbottleneck(mem))
             mem = mem.unsqueeze(1).repeat(1, self.max_length, 1)
             mem = self.norm(mem)
-            mem = mem.permute(1, 0, 2)
-        mem = mem.contiguous()
-        x, h = self.gru(mem, None)
+            # mem = mem.permute(1, 0, 2)
+        mem_emb = torch.cat((embedded, mem), dim=2)
+        mem_emb = mem_emb.permute(1, 0, 2)
+        mem_emb = mem_emb.contiguous()
+        x, h = self.gru(mem_emb, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
         return x, h
