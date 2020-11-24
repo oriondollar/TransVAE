@@ -46,7 +46,7 @@ class GruaVAE(VAEShell):
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-5
+            self.params['ADAM_LR'] = 3e-4
 
         ### Sequence length hard-coded into model
         self.src_len = 127
@@ -116,7 +116,7 @@ class GruVAE(VAEShell):
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-5
+            self.params['ADAM_LR'] = 3e-4
 
         ### Sequence length hard-coded into model
         self.src_len = 127
@@ -372,12 +372,12 @@ class MosesVAE(VAEShell):
     RNN-based VAE without attention.
     """
     def __init__(self, params, name=None, N=3, d_model=512, d_emb=30,
-                 d_latent=128, dropout=0.1, bypass_bottleneck=False):
+                 d_latent=128, dropout=0.2, bypass_bottleneck=False):
         super().__init__(params, name)
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-5
+            self.params['ADAM_LR'] = 3e-4
 
         ### Sequence length hard-coded into model
         self.src_len = 127
