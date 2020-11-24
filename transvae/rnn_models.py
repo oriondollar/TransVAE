@@ -24,7 +24,8 @@ class GruaVAE(VAEShell):
     RNN-based VAE class with attention.
     """
     def __init__(self, params, name=None, N=3, d_model=128,
-                 d_latent=128, dropout=0.1, bypass_bottleneck=False):
+                 d_latent=128, dropout=0.1, tf=False,
+                 bypass_bottleneck=False):
         super().__init__(params, name)
         """
         Instatiating a GruaVAE object builds the model architecture, data structs
@@ -54,7 +55,7 @@ class GruaVAE(VAEShell):
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         encoder = RNNAttnEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_bottleneck, self.device)
-        decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, self.tgt_len, bypass_bottleneck, self.device)
+        decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, self.tgt_len, tf, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_model, self.vocab_size)
         tgt_embed = Embeddings(d_model, self.vocab_size)
@@ -89,13 +90,15 @@ class GruaVAE(VAEShell):
         ### Run through encoder to get memory and hidden state
         mem, _, _, h = self.model.encode(src)
 
-        decoded = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len):
-            out, _ = self.model.decode(decoded, mem, h)
+        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
+        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
+        for i in range(max_len-1):
+            out, _ = self.model.decode(tgt, mem, h)
             out = self.model.generator(out)
             prob = F.softmax(out[:,i,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
             next_word += 1
+            tgt[:,i+1] = next_word
             decoded[:,i] = next_word
 
         if return_str:
@@ -107,7 +110,8 @@ class GruVAE(VAEShell):
     RNN-based VAE without attention.
     """
     def __init__(self, params, name=None, N=3, d_model=128,
-                 d_latent=128, dropout=0.1, bypass_bottleneck=False):
+                 d_latent=128, dropout=0.1, tf=False,
+                 bypass_bottleneck=False):
         super().__init__(params, name)
 
         ### Set learning rate for Adam optimizer
@@ -121,7 +125,7 @@ class GruVAE(VAEShell):
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         encoder = RNNEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_bottleneck, self.device)
-        decoder = RNNDecoder(d_model, d_latent, N, dropout, self.tgt_len, bypass_bottleneck, self.device)
+        decoder = RNNDecoder(d_model, d_latent, N, dropout, self.tgt_len, tf, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_model, self.vocab_size)
         tgt_embed = Embeddings(d_model, self.vocab_size)
@@ -156,13 +160,15 @@ class GruVAE(VAEShell):
         ### Run through encoder to get memory and hidden state
         mem, _, _, h = self.model.encode(src)
 
-        decoded = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len):
-            out, _ = self.model.decode(decoded, mem, h)
+        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
+        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
+        for i in range(max_len-1):
+            out, _ = self.model.decode(tgt, mem, h)
             out = self.model.generator(out)
             prob = F.softmax(out[:,i,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
             next_word += 1
+            tgt[:,i+1] = next_word
             decoded[:,i] = next_word
 
         if return_str:
@@ -243,11 +249,16 @@ class RNNAttnEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNAttnDecoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, max_length, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
         self.max_length = max_length
+        self.teacher_force = tf
+        if self.teacher_force:
+            self.gru_size = self.size * 2
+        else:
+            self.gru_size = self.size
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
@@ -255,7 +266,7 @@ class RNNAttnDecoder(nn.Module):
         self.deconv_bottleneck = DeconvBottleneck(size)
         self.attn = nn.Linear(self.size * 2, self.max_length)
         self.dropout = nn.Dropout(p=dropout)
-        self.gru = nn.GRU(self.size * 2, self.size, num_layers=N, dropout=dropout)
+        self.gru = nn.GRU(self.gru_size, self.size, num_layers=N, dropout=dropout)
         self.norm = LayerNorm(size)
 
     def forward(self, tgt, mem, h):
@@ -267,15 +278,12 @@ class RNNAttnDecoder(nn.Module):
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
             mem = self.norm(mem)
-        out_mem = mem[:,:-1,:]
-        # attn_weights = F.softmax(self.attn(torch.cat((embedded, out_mem), 2)), dim=2)
-        # attn_applied = torch.bmm(attn_weights, out_mem)
-        # x = F.relu(attn_applied)
-        # x = x.permute(1, 0, 2)
-        mem_emb = torch.cat((embedded, out_mem), dim=2)
-        mem_emb = mem_emb.permute(1, 0, 2)
-        mem_emb = mem_emb.contiguous()
-        x, h = self.gru(mem_emb, h)
+        mem = mem[:,:-1,:]
+        if self.teacher_force:
+            mem = torch.cat((embedded, mem), dim=2)
+        mem = mem.permute(1, 0, 2)
+        mem = mem.contiguous()
+        x, h = self.gru(mem, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
         return x, h
@@ -318,15 +326,20 @@ class RNNEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNDecoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, max_length, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
         self.max_length = max_length
+        self.teacher_force = tf
+        if self.teacher_force:
+            self.gru_size = self.size * 2
+        else:
+            self.gru_size = self.size
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
-        self.gru = nn.GRU(self.size * 2, self.size, num_layers=N, dropout=dropout)
+        self.gru = nn.GRU(self.gru_size, self.size, num_layers=N, dropout=dropout)
         self.unbottleneck = nn.Linear(d_latent, size)
         self.dropout = nn.Dropout(dropout)
         self.norm = LayerNorm(size)
@@ -339,10 +352,11 @@ class RNNDecoder(nn.Module):
             mem = mem.unsqueeze(1).repeat(1, self.max_length, 1)
             mem = self.norm(mem)
             # mem = mem.permute(1, 0, 2)
-        mem_emb = torch.cat((embedded, mem), dim=2)
-        mem_emb = mem_emb.permute(1, 0, 2)
-        mem_emb = mem_emb.contiguous()
-        x, h = self.gru(mem_emb, h)
+        if self.teacher_force:
+            mem = torch.cat((embedded, mem), dim=2)
+        mem = mem.permute(1, 0, 2)
+        mem = mem.contiguous()
+        x, h = self.gru(mem, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
         return x, h
@@ -407,13 +421,15 @@ class MosesVAE(VAEShell):
         ### Run through encoder to get memory and hidden state
         mem, _, _, h = self.model.encode(src)
 
-        decoded = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len):
-            out, _ = self.model.decode(decoded, mem, h)
+        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
+        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
+        for i in range(max_len-1):
+            out, _ = self.model.decode(tgt, mem, h)
             out = self.model.generator(out)
             prob = F.softmax(out[:,i,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
             next_word += 1
+            tgt[:,i+1] = next_word
             decoded[:,i] = next_word
 
         if return_str:
