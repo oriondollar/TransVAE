@@ -396,7 +396,7 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def decode(self, data, method='greedy', return_str=True):
+    def decode_from_src(self, data, method='greedy', return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -412,11 +412,11 @@ class TransVAE(VAEShell):
         max_len = self.src_len
 
         ### Run through encoder to get memory keys and values
-        mem, _, _ = self.model.encode(src, src_mask)
+        mem_val, mem_key, _, _ = self.model.encode(src, src_mask)
 
         decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
         for i in range(max_len):
-            out = self.model.decode(mem, src_mask, Variable(decoded),
+            out = self.model.decode(mem_key, mem_val, src_mask, Variable(decoded),
                                     Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
             out = self.model.generator(out)
             prob = F.softmax(out[:,-1,:], dim=-1)
