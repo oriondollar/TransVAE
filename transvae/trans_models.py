@@ -386,7 +386,7 @@ class TransVAE(VAEShell):
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), 1, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
         decoder = VAEDecoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout),
                              DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
@@ -526,9 +526,9 @@ class EncoderLayer(nn.Module):
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
-    def __init__(self, encoder_layer, decoder_layers, N, d_latent, bypass_bottleneck):
+    def __init__(self, encoder_layers, decoder_layers, N, d_latent, bypass_bottleneck):
         super().__init__()
-        self.final_encode = encoder_layer
+        self.final_encodes = clones(encoder_layers, N-1)
         self.layers = clones(decoder_layers, N)
         self.norm = LayerNorm(decoder_layers.size)
         self.bypass_bottleneck = bypass_bottleneck
@@ -546,8 +546,9 @@ class VAEDecoder(nn.Module):
             mem = mem.view(-1, 64, 9)
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
-            mem = self.norm(mem)
-        mem = self.final_encode(mem, src_mask)
+        for final_encode in self.final_encodes:
+            mem = final_encode(mem, src_mask)
+        mem = self.norm(mem)
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)
