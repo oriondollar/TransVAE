@@ -269,10 +269,74 @@ class VAEShell():
             imageio.mimsave('grads.gif', images)
             shutil.rmtree('gif')
 
-    ### Sampling Functions
+    ### Sampling and Decode Functions
     def sample_from_latent(self, size):
         z = torch.randn(size, self.model.encoder.z_means.out_features)
         return z
+
+    def greedy_decode(self, mem):
+        """
+        Greedy decode from model memory.
+        """
+        start_symbol = self.params['CHAR_DICT']['<start>']
+        max_len = self.tgt_len
+
+        tgt = torch.ones(mem.shape[0],max_len).fill_(start_symbol).long()
+        for i in range(max_len-1):
+            out, _ = self.model.decode(tgt, mem)
+            out = self.model.generator(out)
+            prob = F.softmax(out[:,i,:], dim=-1)
+            _, next_word = torch.max(prob, dim=1)
+            next_word += 1
+            tgt[:,i+1] = next_word
+        decoded = tgt[:,1:]
+        return decoded
+
+    def decode_from_src(self, data, method='greedy', return_str=True):
+        """
+        Method for encoding input smiles into memory and decoding back
+        into smiles
+
+        Arguments:
+            data (np.array, required): Input array consisting of smiles and property
+            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
+        """
+        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+        src = Variable(data[:,:-1]).long()
+
+        ### Run through encoder to get memory
+        mem, _, _ = self.model.encode(src)
+
+        ### Decode logic
+        if method == 'greedy':
+            decoded = self.greedy_decode(mem)
+        else:
+            decoded = None
+
+        if return_str:
+            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+        return decoded
+
+    def decode_from_mem(self, n, method='greedy', return_str=True):
+        """
+        Method for decoding sampled memory back into smiles
+
+        Arguments:
+            n (int): Number of data points to sample
+            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
+        """
+        mem = self.sample_from_latent(n)
+
+        ### Decode logic
+        if method == 'greedy':
+            decoded = self.greedy_decode(mem)
+        else:
+            decoded = None
+
+        if return_str:
+            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+        return decoded
+
 
 ####### Encoder, Decoder and Generator ############
 
