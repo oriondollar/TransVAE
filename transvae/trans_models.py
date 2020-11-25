@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss
+from loss import ce_loss, vae_ce_loss, trans_ce_loss
 
 
 ####### MODEL SHELL ##########
@@ -29,6 +29,12 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
+        if 'LOSS_FUNC' not in self.params.keys():
+            self.params['LOSS_FUNC'] = 'VAE_CE'
+        if self.params['LOSS_FUNC'] == 'VAE_CE':
+            self.loss_fn = vae_ce_loss
+        elif self.params['LOSS_FUNC'] == 'TRANS_CE':
+            self.loss_fn = trans_ce_loss
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
         if 'LR' not in self.params.keys():
@@ -175,8 +181,8 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
                                              self.params['CHAR_WEIGHTS'])
                     # print(src[0,1:].long() - 1)
                     # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
@@ -227,8 +233,8 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
                                              self.params['CHAR_WEIGHTS'])
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
@@ -448,10 +454,10 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem, mu, logvar = self.encode(src, src_mask)
-        x = self.decode(mem, src_mask, tgt, tgt_mask)
+        mem, mu, logvar, predicted_mask = self.encode(src, src_mask)
+        x = self.decode(mem, predicted_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, mu, logvar
+        return x, [mu, logvar, predicted_mask, src_mask]
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -476,8 +482,8 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
-        self.learn_mask1(d_latent, d_latent*2)
-        self.learn_mask2(d_latent*2, self.layer.src_len)
+        self.learn_mask1 = nn.Linear(d_latent, d_latent*2)
+        self.learn_mask2 = nn.Linear(d_latent*2, layer.src_len+1)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -500,10 +506,9 @@ class VAEEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar, self.eps_scale)
-        predicted_mask = self.learn_mask1(mu)
-        predicted_mask = self.learn_mask2(predicted_mask)
-        print(predicted_mask.shape, mask.shape)
-        return mem, mu, logvar
+        predicted_mask = F.relu(self.learn_mask1(mu))
+        predicted_mask = F.relu(self.learn_mask2(predicted_mask).unsqueeze(1))
+        return mem, mu, logvar, predicted_mask
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -542,7 +547,7 @@ class VAEDecoder(nn.Module):
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
             mem = self.norm(mem)
-        mem = self.final_encode(mem, self.fake_mask.unsqueeze(0).repeat(mem.shape[0], 1, 1))
+        mem = self.final_encode(mem, src_mask)
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)

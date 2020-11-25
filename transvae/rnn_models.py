@@ -131,7 +131,7 @@ class RNNEncoderDecoder(nn.Module):
         mem, mu, logvar = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar
+        return x, [mu, logvar]
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
