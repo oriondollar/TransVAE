@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss
+from loss import ce_loss, vae_ce_loss, trans_ce_loss
 
 
 ####### MODEL SHELL ##########
@@ -29,6 +29,12 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
+        if 'LOSS_FUNC' not in self.params.keys():
+            self.params['LOSS_FUNC'] = 'VAE_CE'
+        if self.params['LOSS_FUNC'] == 'VAE_CE':
+            self.loss_fn = vae_ce_loss
+        elif self.params['LOSS_FUNC'] == 'TRANS_CE':
+            self.loss_fn = trans_ce_loss
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
         if 'LR' not in self.params.keys():
@@ -176,7 +182,7 @@ class VAEShell():
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                    loss, bce, kld = self.loss_fn(src, x_out, mu, logvar,
                                              self.params['CHAR_WEIGHTS'])
                     # print(src[0,1:].long() - 1)
                     # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
@@ -228,7 +234,7 @@ class VAEShell():
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                    loss, bce, kld = self.loss_fn(src, x_out, mu, logvar,
                                              self.params['CHAR_WEIGHTS'])
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
@@ -401,9 +407,10 @@ class VAEEncoder(nn.Module):
     def __init__(self, layer, N, d_latent, bypass_bottleneck, eps_scale):
         super().__init__()
         self.layers = clones(layer, N)
-        self.conv_bottleneck = ConvBottleneck(layer.size)
-        self.z_means = nn.Linear(576, d_latent)
-        self.z_var = nn.Linear(576, d_latent)
+        self.conv_bottleneck_memv = ConvBottleneck(layer.size)
+        self.conv_bottleneck_memk = ConvBottleneck(layer.size)
+        self.z_means_memv, self.z_var_memv = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
+        self.z_means_memk, self.z_var_memk = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
 
         self.bypass_bottleneck = bypass_bottleneck
@@ -425,11 +432,16 @@ class VAEEncoder(nn.Module):
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
             mem_val = mem_val.permute(0, 2, 1)
-            mem_val = self.conv_bottleneck(mem_val)
+            mem_val = self.conv_bottleneck_memv(mem_val)
             mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
-            mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
-            mem_val = self.reparameterize(mu, logvar, self.eps_scale)
-        return mem_key, mem_val, mu, logvar
+            muv, logvarv = self.z_means_memv(mem_val), self.z_var_memv(mem_val)
+            mem_val = self.reparameterize(muv, logvarv, self.eps_scale)
+            mem_key = mem_key.permute(0, 2, 1)
+            mem_key = self.conv_bottleneck_memk(mem_key)
+            mem_key = mem_key.contiguous().view(mem_key.size(0), -1)
+            muk, logvark = self.z_means_memk(mem_key), self.z_var_memk(mem_key)
+            mem_key = self.reparameterize(muk, logvark, self.eps_scale)
+        return mem_key, mem_val, [muv, muk], [logvarv, logvark]
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -456,17 +468,24 @@ class VAEDecoder(nn.Module):
         self.tgt_len = layer.tgt_len
 
         # Reshaping memory with deconvolution
-        self.linear = nn.Linear(d_latent, 576)
-        self.deconv_bottleneck = DeconvBottleneck(layer.size)
+        self.linearv = nn.Linear(d_latent, 576)
+        self.lineark = nn.Linear(d_latent, 576)
+        self.deconv_bottleneck_memv = DeconvBottleneck(layer.size)
+        self.deconv_bottleneck_memk = DeconvBottleneck(layer.size)
 
     def forward(self, x, m_key, m_val, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
-            m_val = F.relu(self.linear(m_val))
+            m_val = F.relu(self.linearv(m_val))
             m_val = m_val.view(-1, 64, 9)
-            m_val = self.deconv_bottleneck(m_val)
+            m_val = self.deconv_bottleneck_memv(m_val)
             m_val = m_val.permute(0, 2, 1)
             m_val = self.norm(m_val)
+            m_key = F.relu(self.lineark(m_key))
+            m_key = m_key.view(-1, 64, 9)
+            m_key = self.deconv_bottleneck_memk(m_key)
+            m_key = m_key.permute(0, 2, 1)
+            m_key = self.norm(m_key)
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, m_key, m_val, src_mask, tgt_mask)
         return self.norm(x)
