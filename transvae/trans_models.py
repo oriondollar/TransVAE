@@ -309,7 +309,8 @@ class TransVAE(VAEShell):
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
         encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
-        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
+        decoder = VAEDecoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout),
+                             DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
@@ -327,6 +328,9 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
+    def sample_from_latent(self, size):
+        z = torch.randn(size, self.model.encoder.z_means.out_features)
+        return z
 
     def decode(self, data, method='greedy', return_str=True):
         """
@@ -344,11 +348,11 @@ class TransVAE(VAEShell):
         max_len = self.src_len
 
         ### Run through encoder to get memory keys and values
-        mem_key, mem_val, _, _ = self.model.encode(src, src_mask)
+        mem, _, _ = self.model.encode(src, src_mask)
 
         decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
         for i in range(max_len):
-            out = self.model.decode(mem_key, mem_val, src_mask, Variable(decoded),
+            out = self.model.decode(mem, src_mask, Variable(decoded),
                                     Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
             out = self.model.generator(out)
             prob = F.softmax(out[:,-1,:], dim=-1)
@@ -376,16 +380,16 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem_key, mem_val, mu, logvar = self.encode(src, src_mask)
-        x = self.decode(mem_key, mem_val, src_mask, tgt, tgt_mask)
+        mem, mu, logvar = self.encode(src, src_mask)
+        x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
         return x, mu, logvar
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
 
-    def decode(self, mem_key, mem_val, src_mask, tgt, tgt_mask):
-        return self.decoder(self.tgt_embed(tgt), mem_key, mem_val, src_mask, tgt_mask)
+    def decode(self, mem, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), mem, src_mask, tgt_mask)
 
 class Generator(nn.Module):
     "Define standard linear + softmax generation step"
@@ -417,18 +421,16 @@ class VAEEncoder(nn.Module):
         "Pass the input (and mask) through each layer in turn"
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mask)
-        x = self.norm(x)
-        mem_key = x.clone()
-        mem_val = x.clone()
+        mem = self.norm(x)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
-            mem_val = mem_val.permute(0, 2, 1)
-            mem_val = self.conv_bottleneck(mem_val)
-            mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
-            mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
-            mem_val = self.reparameterize(mu, logvar, self.eps_scale)
-        return mem_key, mem_val, mu, logvar
+            mem = mem.permute(0, 2, 1)
+            mem = self.conv_bottleneck(mem)
+            mem = mem.contiguous().view(mem.size(0), -1)
+            mu, logvar = self.z_means(mem), self.z_var(mem)
+            mem = self.reparameterize(mu, logvar, self.eps_scale)
+        return mem, mu, logvar
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -446,28 +448,31 @@ class EncoderLayer(nn.Module):
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
-    def __init__(self, layer, N, d_latent, bypass_bottleneck):
+    def __init__(self, encoder_layer, decoder_layers, N, d_latent, bypass_bottleneck):
         super().__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+        self.final_encode = encoder_layer
+        self.layers = clones(decoder_layers, N)
+        self.norm = LayerNorm(decoder_layers.size)
         self.bypass_bottleneck = bypass_bottleneck
-        self.size = layer.size
-        self.tgt_len = layer.tgt_len
+        self.size = decoder_layers.size
+        self.tgt_len = decoder_layers.tgt_len
+        self.fake_mask = torch.ones(1, self.size-1)
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
-        self.deconv_bottleneck = DeconvBottleneck(layer.size)
+        self.deconv_bottleneck = DeconvBottleneck(decoder_layers.size)
 
-    def forward(self, x, m_key, m_val, src_mask, tgt_mask):
+    def forward(self, x, mem, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
-            m_val = F.relu(self.linear(m_val))
-            m_val = m_val.view(-1, 64, 9)
-            m_val = self.deconv_bottleneck(m_val)
-            m_val = m_val.permute(0, 2, 1)
-            m_val = self.norm(m_val)
+            mem = F.relu(self.linear(mem))
+            mem = mem.view(-1, 64, 9)
+            mem = self.deconv_bottleneck(mem)
+            mem = mem.permute(0, 2, 1)
+            mem = self.norm(mem)
+        mem = self.final_encode(mem, self.fake_mask.unsqueeze(0).repeat(mem.shape[0], 1, 1))
         for i, attn_layer in enumerate(self.layers):
-            x = attn_layer(x, m_key, m_val, src_mask, tgt_mask)
+            x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
