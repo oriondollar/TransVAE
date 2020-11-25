@@ -5,17 +5,17 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
-def trans_ce_loss(x, x_out, mu, logvar, weights, beta=1):
-    "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
-    x = x.long()[:,1:] - 1
-    x = x.contiguous().view(-1)
-    x_out = x_out.contiguous().view(-1, x_out.size(2))
-    BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
-    muv, muk = mu
-    logvarv, logvark = logvar
-    KLDv = beta * -0.5 * torch.mean(1 + logvarv - muv.pow(2) - logvarv.exp())
-    KLDk = beta * -0.5 * torch.mean(1 + logvark - muk.pow(2) - logvark.exp())
-    return BCE + KLDv + KLDk, BCE, KLDv + KLDk
+# def trans_ce_loss(x, x_out, mu, logvar, weights, beta=1):
+#     "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
+#     x = x.long()[:,1:] - 1
+#     x = x.contiguous().view(-1)
+#     x_out = x_out.contiguous().view(-1, x_out.size(2))
+#     BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
+#     muv, muk = mu
+#     logvarv, logvark = logvar
+#     KLDv = beta * -0.5 * torch.mean(1 + logvarv - muv.pow(2) - logvarv.exp())
+#     KLDk = beta * -0.5 * torch.mean(1 + logvark - muk.pow(2) - logvark.exp())
+#     return BCE + KLDv + KLDk, BCE, KLDv + KLDk
 
 def vae_ce_loss(x, x_out, mu, logvar, weights, beta=1):
     "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
