@@ -269,6 +269,11 @@ class VAEShell():
             imageio.mimsave('grads.gif', images)
             shutil.rmtree('gif')
 
+    ### Sampling Functions
+    def sample_from_latent(self, size):
+        z = torch.randn(size, self.model.encoder.z_means.out_features)
+        return z
+
 ####### Encoder, Decoder and Generator ############
 
 class TransVAE(VAEShell):
@@ -327,10 +332,6 @@ class TransVAE(VAEShell):
         self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
-
-    def sample_from_latent(self, size):
-        z = torch.randn(size, self.model.encoder.z_means.out_features)
-        return z
 
     def decode(self, data, method='greedy', return_str=True):
         """
@@ -456,7 +457,8 @@ class VAEDecoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.size = decoder_layers.size
         self.tgt_len = decoder_layers.tgt_len
-        self.fake_mask = torch.ones(1, self.size-1)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.fake_mask = torch.ones(1, self.size-1, device=self.device)
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
