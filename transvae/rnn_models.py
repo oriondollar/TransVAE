@@ -25,6 +25,7 @@ class GruaVAE(VAEShell):
     """
     def __init__(self, params, name=None, N=3, d_model=128,
                  d_latent=128, dropout=0.1, tf=False,
+                 bypass_attention=False,
                  bypass_bottleneck=False):
         super().__init__(params, name)
         """
@@ -54,7 +55,7 @@ class GruaVAE(VAEShell):
 
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = RNNAttnEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_bottleneck, self.device)
+        encoder = RNNAttnEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_attention, bypass_bottleneck, self.device)
         decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, self.tgt_len, tf, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_model, self.vocab_size)
@@ -204,11 +205,12 @@ class RNNEncoderDecoder(nn.Module):
         return self.decoder(self.src_embed(tgt), mem, h)
 
 class RNNAttnEncoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, max_length, bypass_attention, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
         self.max_length = max_length
+        self.bypass_attention = bypass_attention
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
@@ -231,10 +233,12 @@ class RNNAttnEncoder(nn.Module):
         x_out, h = self.gru(x, h)
         x = x.permute(1, 0, 2)
         x_out = x_out.permute(1, 0, 2)
-        x_out = self.norm(x_out)
-        attn_weights = F.softmax(self.attn(torch.cat((x, x_out), 2)), dim=2)
-        attn_applied = torch.bmm(attn_weights, x_out)
-        mem = F.relu(attn_applied)
+        mem = self.norm(x_out)
+        if not self.bypass_attention:
+            attn_weights = F.softmax(self.attn(torch.cat((x, mem), 2)), dim=2)
+            attn_applied = torch.bmm(attn_weights, mem)
+            mem = F.relu(attn_applied)
+        print(mem.shape)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
