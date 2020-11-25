@@ -476,6 +476,8 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
+        self.learn_mask1(d_latent, d_latent*2)
+        self.learn_mask2(d_latent*2, self.layer.src_len)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -498,6 +500,9 @@ class VAEEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar, self.eps_scale)
+        predicted_mask = self.learn_mask1(mu)
+        predicted_mask = self.learn_mask2(predicted_mask)
+        print(predicted_mask.shape, mask.shape)
         return mem, mu, logvar
 
 class EncoderLayer(nn.Module):
@@ -524,8 +529,6 @@ class VAEDecoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.size = decoder_layers.size
         self.tgt_len = decoder_layers.tgt_len
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.fake_mask = torch.ones(1, self.size-1, device=self.device)
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
