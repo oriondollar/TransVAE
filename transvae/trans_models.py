@@ -183,7 +183,8 @@ class VAEShell():
 
                     x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                             self.params['CHAR_WEIGHTS'])
+                                                  self.params['CHAR_WEIGHTS'],
+                                                  self.params['BETA'])
                     # print(src[0,1:].long() - 1)
                     # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
                     avg_losses.append(loss.item())
@@ -235,7 +236,8 @@ class VAEShell():
 
                     x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                             self.params['CHAR_WEIGHTS'])
+                                                  self.params['CHAR_WEIGHTS'],
+                                                  self.params['BETA'])
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -386,7 +388,7 @@ class TransVAE(VAEShell):
         attn = MultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), 1, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
+        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
         decoder = VAEDecoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout),
                              DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
@@ -528,7 +530,7 @@ class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
     def __init__(self, encoder_layers, decoder_layers, N, d_latent, bypass_bottleneck):
         super().__init__()
-        self.final_encodes = clones(encoder_layers, N-1)
+        self.final_encodes = clones(encoder_layers, 1)
         self.layers = clones(decoder_layers, N)
         self.norm = LayerNorm(decoder_layers.size)
         self.bypass_bottleneck = bypass_bottleneck
