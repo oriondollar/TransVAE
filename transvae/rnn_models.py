@@ -73,38 +73,6 @@ class GruaVAE(VAEShell):
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
 
-    def decode(self, data, method='greedy', return_str=True):
-        """
-        Method for encoding input smiles into memory and decoding back
-        into smiles
-
-        Arguments:
-            data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
-        """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
-        tgt = Variable(data[:,:-2]).long()
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.tgt_len
-
-        ### Run through encoder to get memory and hidden state
-        mem, _, _, h = self.model.encode(src)
-
-        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len-1):
-            out, _ = self.model.decode(tgt, mem, h)
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,i,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            tgt[:,i+1] = next_word
-            decoded[:,i] = next_word
-
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
 
 class GruVAE(VAEShell):
     """
@@ -143,39 +111,6 @@ class GruVAE(VAEShell):
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
 
-    def decode(self, data, method='greedy', return_str=True):
-        """
-        Method for encoding input smiles into memory and decoding back
-        into smiles
-
-        Arguments:
-            data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
-        """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
-        tgt = Variable(data[:,:-2]).long()
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.tgt_len
-
-        ### Run through encoder to get memory and hidden state
-        mem, _, _, h = self.model.encode(src)
-
-        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len-1):
-            out, _ = self.model.decode(tgt, mem, h)
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,i,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            tgt[:,i+1] = next_word
-            decoded[:,i] = next_word
-
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
-
 
 ########## Recurrent Sub-blocks ############
 
@@ -193,16 +128,16 @@ class RNNEncoderDecoder(nn.Module):
         self.generator = generator
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
-        mem, mu, logvar, h = self.encode(src)
-        x, h = self.decode(tgt, mem, h)
+        mem, mu, logvar = self.encode(src)
+        x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar
+        return x, [mu, logvar]
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
 
-    def decode(self, tgt, mem, h):
-        return self.decoder(self.src_embed(tgt), mem, h)
+    def decode(self, tgt, mem):
+        return self.decoder(self.src_embed(tgt), mem)
 
 class RNNAttnEncoder(nn.Module):
     def __init__(self, size, d_latent, N, dropout, max_length, bypass_attention, bypass_bottleneck, device):
@@ -238,7 +173,6 @@ class RNNAttnEncoder(nn.Module):
             attn_weights = F.softmax(self.attn(torch.cat((x, mem), 2)), dim=2)
             attn_applied = torch.bmm(attn_weights, mem)
             mem = F.relu(attn_applied)
-        print(mem.shape)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
@@ -247,7 +181,7 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, h
+        return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
@@ -273,7 +207,7 @@ class RNNAttnDecoder(nn.Module):
         self.gru = nn.GRU(self.gru_size, self.size, num_layers=N, dropout=dropout)
         self.norm = LayerNorm(size)
 
-    def forward(self, tgt, mem, h):
+    def forward(self, tgt, mem):
         embedded = self.dropout(tgt)
         h = self.initH(mem.shape[0])
         if not self.bypass_bottleneck:
@@ -324,7 +258,7 @@ class RNNEncoder(nn.Module):
         else:
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, h
+        return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
@@ -348,7 +282,7 @@ class RNNDecoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.norm = LayerNorm(size)
 
-    def forward(self, tgt, mem, h):
+    def forward(self, tgt, mem):
         h = self.initH(mem.shape[0])
         embedded = self.dropout(tgt)
         if not self.bypass_bottleneck:
@@ -407,38 +341,6 @@ class MosesVAE(VAEShell):
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
 
-    def decode(self, data, method='greedy', return_str=True):
-        """
-        Method for encoding input smiles into memory and decoding back
-        into smiles
-
-        Arguments:
-            data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
-        """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
-        tgt = Variable(data[:,:-2]).long()
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.tgt_len
-
-        ### Run through encoder to get memory and hidden state
-        mem, _, _, h = self.model.encode(src)
-
-        tgt = torch.ones(data.shape[0],max_len).fill_(start_symbol).type_as(src.data)
-        decoded = torch.ones(data.shape[0],max_len-1).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len-1):
-            out, _ = self.model.decode(tgt, mem, h)
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,i,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            tgt[:,i+1] = next_word
-            decoded[:,i] = next_word
-
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
 
 class MosesEncoder(nn.Module):
     def __init__(self, d_emb, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
@@ -450,10 +352,10 @@ class MosesEncoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
-        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout)
-        self.z_means = nn.Linear(size, d_latent)
-        self.z_var = nn.Linear(size, d_latent)
-        self.norm = LayerNorm(size)
+        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout, bidirectional=True)
+        self.z_means = nn.Linear(size*2, d_latent)
+        self.z_var = nn.Linear(size*2, d_latent)
+        self.norm = LayerNorm(size*2)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -464,16 +366,17 @@ class MosesEncoder(nn.Module):
         h = self.initH(x.shape[0])
         x = x.permute(1, 0, 2)
         x, h = self.gru(x, h)
-        mem = self.norm(h[-1,:,:])
+        h = torch.cat(h.split(1), dim=-1).squeeze(0)
+        mem = self.norm(h)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, h
+        return mem, mu, logvar
 
     def initH(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
+        return torch.zeros(self.n_layers*2, batch_size, self.size, device=self.device)
 
 class MosesDecoder(nn.Module):
     def __init__(self, d_emb, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
@@ -490,7 +393,7 @@ class MosesDecoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.norm = LayerNorm(size)
 
-    def forward(self, tgt, mem, h):
+    def forward(self, tgt, mem):
         embedded = self.dropout(tgt)
         h = self.l2h(mem)
         h = h.unsqueeze(0).repeat(self.n_layers, 1, 1)

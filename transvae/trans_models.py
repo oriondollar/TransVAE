@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss
+from loss import ce_loss, vae_ce_loss, trans_ce_loss
 
 
 ####### MODEL SHELL ##########
@@ -29,6 +29,12 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
+        if 'LOSS_FUNC' not in self.params.keys():
+            self.params['LOSS_FUNC'] = 'VAE_CE'
+        if self.params['LOSS_FUNC'] == 'VAE_CE':
+            self.loss_fn = vae_ce_loss
+        elif self.params['LOSS_FUNC'] == 'TRANS_CE':
+            self.loss_fn = trans_ce_loss
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.1
         if 'LR' not in self.params.keys():
@@ -175,9 +181,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
-                                             self.params['CHAR_WEIGHTS'])
+                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
+                                                  self.params['CHAR_WEIGHTS'],
+                                                  self.params['BETA'])
                     # print(src[0,1:].long() - 1)
                     # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
                     avg_losses.append(loss.item())
@@ -227,9 +234,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
-                                             self.params['CHAR_WEIGHTS'])
+                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
+                                                  self.params['CHAR_WEIGHTS'],
+                                                  self.params['BETA'])
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -269,8 +277,15 @@ class VAEShell():
             imageio.mimsave('grads.gif', images)
             shutil.rmtree('gif')
 
+<<<<<<< HEAD
     ### Sampling and Decode Functions
+=======
+    ### Sampling and Decoding Functions
+>>>>>>> tvae_sampling
     def sample_from_latent(self, size):
+        """
+        Quickly sample from latent dimension
+        """
         z = torch.randn(size, self.model.encoder.z_means.out_features)
         return z
 
@@ -444,10 +459,15 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
+<<<<<<< HEAD
         mem_val, mem_key, mu, logvar = self.encode(src, src_mask)
         x = self.decode(mem_key, mem_val, src_mask, tgt, tgt_mask)
+=======
+        mem, mu, logvar, predicted_mask = self.encode(src, src_mask)
+        x = self.decode(mem, predicted_mask, tgt, tgt_mask)
+>>>>>>> tvae_sampling
         x = self.generator(x)
-        return x, mu, logvar
+        return x, [mu, logvar, predicted_mask, src_mask]
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -472,6 +492,8 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
+        self.learn_mask1 = nn.Linear(d_latent, d_latent*2)
+        self.learn_mask2 = nn.Linear(d_latent*2, layer.src_len+1)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -491,12 +513,23 @@ class VAEEncoder(nn.Module):
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
+<<<<<<< HEAD
             mem_val = mem_val.permute(0, 2, 1)
             mem_val = self.conv_bottleneck(mem_val)
             mem_val = mem_val.contiguous().view(mem_val.size(0), -1)
             mu, logvar = self.z_means(mem_val), self.z_var(mem_val)
             mem_val = self.reparameterize(mu, logvar, self.eps_scale)
         return mem_val, mem_key, mu, logvar
+=======
+            mem = mem.permute(0, 2, 1)
+            mem = self.conv_bottleneck(mem)
+            mem = mem.contiguous().view(mem.size(0), -1)
+            mu, logvar = self.z_means(mem), self.z_var(mem)
+            mem = self.reparameterize(mu, logvar, self.eps_scale)
+        predicted_mask = F.relu(self.learn_mask1(mu))
+        predicted_mask = F.relu(self.learn_mask2(predicted_mask).unsqueeze(1))
+        return mem, mu, logvar, predicted_mask
+>>>>>>> tvae_sampling
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -514,6 +547,7 @@ class EncoderLayer(nn.Module):
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
+<<<<<<< HEAD
     def __init__(self, layer, N, d_latent, bypass_bottleneck):
         super().__init__()
         self.layers = clones(layer, N)
@@ -521,6 +555,16 @@ class VAEDecoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.size = layer.size
         self.tgt_len = layer.tgt_len
+=======
+    def __init__(self, encoder_layers, decoder_layers, N, d_latent, bypass_bottleneck):
+        super().__init__()
+        self.final_encodes = clones(encoder_layers, 1)
+        self.layers = clones(decoder_layers, N)
+        self.norm = LayerNorm(decoder_layers.size)
+        self.bypass_bottleneck = bypass_bottleneck
+        self.size = decoder_layers.size
+        self.tgt_len = decoder_layers.tgt_len
+>>>>>>> tvae_sampling
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
@@ -529,11 +573,21 @@ class VAEDecoder(nn.Module):
     def forward(self, x, mem_key, mem_val, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
+<<<<<<< HEAD
             mem_val = F.relu(self.linear(mem_val))
             mem_val = mem_val.view(-1, 64, 9)
             mem_val = self.deconv_bottleneck(mem_val)
             mem_val = mem_val.permute(0, 2, 1)
             mem_val = self.norm(mem_val)
+=======
+            mem = F.relu(self.linear(mem))
+            mem = mem.view(-1, 64, 9)
+            mem = self.deconv_bottleneck(mem)
+            mem = mem.permute(0, 2, 1)
+        for final_encode in self.final_encodes:
+            mem = final_encode(mem, src_mask)
+        mem = self.norm(mem)
+>>>>>>> tvae_sampling
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mem_key, mem_val, src_mask, tgt_mask)
         return self.norm(x)
