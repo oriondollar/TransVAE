@@ -299,8 +299,13 @@ class VAEShell():
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
-
         tgt = torch.ones(mem.shape[0],max_len).fill_(start_symbol).long()
+
+        if self.use_gpu:
+            mem = mem.cuda()
+            self.model.cuda()
+            tgt = tgt.cuda()
+            
         for i in range(max_len-1):
             out, _ = self.model.decode(tgt, mem)
             out = self.model.generator(out)
@@ -345,9 +350,6 @@ class VAEShell():
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         mem = self.sample_from_latent(n)
-        if self.use_gpu:
-            mem = mem.cuda()
-            self.model.cuda()
 
         ### Decode logic
         if method == 'greedy':
