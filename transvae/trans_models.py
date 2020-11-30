@@ -389,7 +389,8 @@ class TransVAE(VAEShell):
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
         encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
-        decoder = VAEDecoder(DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
+        decoder = VAEDecoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout),
+                             DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
         src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
         generator = Generator(d_model, self.vocab_size)
@@ -407,7 +408,7 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def decode_from_src(self, data, method='greedy', return_str=True):
+    def decode(self, data, method='greedy', return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -423,11 +424,11 @@ class TransVAE(VAEShell):
         max_len = self.src_len
 
         ### Run through encoder to get memory keys and values
-        mem_val, mem_key, _, _ = self.model.encode(src, src_mask)
+        mem, _, _ = self.model.encode(src, src_mask)
 
         decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
         for i in range(max_len):
-            out = self.model.decode(mem_key, mem_val, src_mask, Variable(decoded),
+            out = self.model.decode(mem, src_mask, Variable(decoded),
                                     Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
             out = self.model.generator(out)
             prob = F.softmax(out[:,-1,:], dim=-1)
@@ -463,8 +464,8 @@ class EncoderDecoder(nn.Module):
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
 
-    def decode(self, mem_key, mem_val, src_mask, tgt, tgt_mask):
-        return self.decoder(self.tgt_embed(tgt), mem_key, mem_val, src_mask, tgt_mask)
+    def decode(self, mem, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), mem, src_mask, tgt_mask)
 
 class Generator(nn.Module):
     "Define standard linear + softmax generation step"
@@ -498,9 +499,7 @@ class VAEEncoder(nn.Module):
         "Pass the input (and mask) through each layer in turn"
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mask)
-        x = self.norm(x)
-        mem_val = x.clone()
-        mem_key = x.clone()
+        mem = self.norm(x)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
@@ -540,9 +539,9 @@ class VAEDecoder(nn.Module):
 
         # Reshaping memory with deconvolution
         self.linear = nn.Linear(d_latent, 576)
-        self.deconv_bottleneck = DeconvBottleneck(layer.size)
+        self.deconv_bottleneck = DeconvBottleneck(decoder_layers.size)
 
-    def forward(self, x, mem_key, mem_val, src_mask, tgt_mask):
+    def forward(self, x, mem, src_mask, tgt_mask):
         "Pass the memory and target into decoder"
         if not self.bypass_bottleneck:
             mem = F.relu(self.linear(mem))
@@ -553,7 +552,7 @@ class VAEDecoder(nn.Module):
             mem = final_encode(mem, src_mask)
         mem = self.norm(mem)
         for i, attn_layer in enumerate(self.layers):
-            x = attn_layer(x, mem_key, mem_val, src_mask, tgt_mask)
+            x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
