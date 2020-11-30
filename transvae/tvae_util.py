@@ -118,7 +118,7 @@ def get_char_weights(train_smiles, params, freq_penalty=0.5):
 def decode_smiles(encoded_tensors, org_dict):
     smiles = []
     for i in range(encoded_tensors.shape[0]):
-        encoded_tensor = encoded_tensors.numpy()[i,:] - 1
+        encoded_tensor = encoded_tensors.cpu().numpy()[i,:] - 1
         smile = ''
         for i in range(encoded_tensor.shape[0]):
             idx = encoded_tensor[i]
