@@ -59,6 +59,19 @@ class ListModule(nn.Module):
     def __len__(self):
         return len(self._modules)
 
+class KLAnnealer:
+    def __init__(self, kl_low, kl_high, n_epochs, start_epoch):
+        self.kl_low = kl_low
+        self.kl_high = kl_high
+        self.n_epochs = n_epochs
+        self.start_epoch = start_epoch
+
+        self.kl = (self.kl_high - self.kl_low) / (self.n_epochs - self.start_epoch)
+
+    def __call__(self, epoch):
+        k = (epoch - self.start_epoch) if epoch >= self.start_epoch else 0
+        return self.kl_low + k * self.kl
+
 
 ####### PREPROCESSING HELPERS ##########
 

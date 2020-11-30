@@ -35,8 +35,12 @@ class VAEShell():
             self.loss_fn = vae_ce_loss
         elif self.params['LOSS_FUNC'] == 'TRANS_CE':
             self.loss_fn = trans_ce_loss
+        if 'BETA_INIT' not in self.params.keys():
+            self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
-            self.params['BETA'] = 0.1
+            self.params['BETA'] = 0.05
+        if 'ANNEAL_START' not in self.params.keys():
+            self.params['ANNEAL_START'] = 0
         if 'LR' not in self.params.keys():
             self.params['LR'] = 1
         if 'WARMUP_STEPS' not in self.params.keys():
@@ -161,11 +165,16 @@ class VAEShell():
             images = []
             frame = 0
 
+        ### Initialize Annealer
+        kl_annealer = KLAnnealer(self.params['BETA_INIT'], self.params['BETA'],
+                                 epochs, self.params['ANNEAL_START'])
+
         ### Epoch loop
         for epoch in range(epochs):
             ### Train Loop
             self.model.train()
             losses = []
+            beta = kl_annealer(epoch)
             for j, data in enumerate(train_iter):
                 avg_losses = []
                 avg_bce_losses = []
@@ -184,9 +193,7 @@ class VAEShell():
                     x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = self.loss_fn(src, x_out, loss_items,
                                                   self.params['CHAR_WEIGHTS'],
-                                                  self.params['BETA'])
-                    # print(src[0,1:].long() - 1)
-                    # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
+                                                  beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -237,7 +244,7 @@ class VAEShell():
                     x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
                     loss, bce, kld = self.loss_fn(src, x_out, loss_items,
                                                   self.params['CHAR_WEIGHTS'],
-                                                  self.params['BETA'])
+                                                  beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -257,7 +264,7 @@ class VAEShell():
 
             self.n_epochs += 1
             val_loss = np.mean(losses)
-            print('Epoch - {} Train - {} Val - {}'.format(epoch+1, train_loss, val_loss))
+            print('Epoch - {} Train - {} Val - {} KLBeta - {}'.format(self.n_epochs, train_loss, val_loss, beta))
 
             ### Update current state and save model
             self.current_state['epoch'] = self.n_epochs
