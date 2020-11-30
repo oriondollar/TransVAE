@@ -1,4 +1,5 @@
 import os
+from time import perf_counter
 import shutil
 import imageio
 import numpy as np
