@@ -353,9 +353,9 @@ class MosesEncoder(nn.Module):
         self.device = device
 
         self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout, bidirectional=True)
-        self.z_means = nn.Linear(size, d_latent)
-        self.z_var = nn.Linear(size, d_latent)
-        self.norm = LayerNorm(size)
+        self.z_means = nn.Linear(size*2, d_latent)
+        self.z_var = nn.Linear(size*2, d_latent)
+        self.norm = LayerNorm(size*2)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -366,7 +366,8 @@ class MosesEncoder(nn.Module):
         h = self.initH(x.shape[0])
         x = x.permute(1, 0, 2)
         x, h = self.gru(x, h)
-        mem = self.norm(h[-1,:,:])
+        h = torch.cat(h.split(1), dim=-1).squeeze(0)
+        mem = self.norm(h)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
@@ -375,7 +376,7 @@ class MosesEncoder(nn.Module):
         return mem, mu, logvar
 
     def initH(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
+        return torch.zeros(self.n_layers*2, batch_size, self.size, device=self.device)
 
 class MosesDecoder(nn.Module):
     def __init__(self, d_emb, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
