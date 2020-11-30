@@ -415,7 +415,7 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def decode(self, data, method='greedy', return_str=True):
+    def decode_from_src(self, data, method='greedy', return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
