@@ -431,7 +431,7 @@ class TransVAE(VAEShell):
         max_len = self.src_len
 
         ### Run through encoder to get memory keys and values
-        mem, _, _ = self.model.encode(src, src_mask)
+        mem, _, _, _ = self.model.encode(src, src_mask)
 
         decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
         for i in range(max_len):
