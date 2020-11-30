@@ -12,7 +12,7 @@ def trans_ce_loss(x, x_out, loss_items, weights, beta=1):
     x = x.contiguous().view(-1)
     x_out = x_out.contiguous().view(-1, x_out.size(2))
     BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
-    MSE = F.mse_loss(predicted_mask, true_mask.float(), reduction='mean')
+    # MSE = F.mse_loss(predicted_mask, true_mask.float(), reduction='mean')
     KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
     return BCE + KLD, BCE, KLD
 

@@ -352,7 +352,7 @@ class MosesEncoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
-        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout)
+        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout, bidirectional=True)
         self.z_means = nn.Linear(size, d_latent)
         self.z_var = nn.Linear(size, d_latent)
         self.norm = LayerNorm(size)
