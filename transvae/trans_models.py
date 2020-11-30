@@ -347,6 +347,7 @@ class VAEShell():
         mem = self.sample_from_latent(n)
         if self.use_gpu:
             mem = mem.cuda()
+            self.model.cuda()
 
         ### Decode logic
         if method == 'greedy':
