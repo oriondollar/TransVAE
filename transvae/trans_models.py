@@ -345,6 +345,8 @@ class VAEShell():
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         mem = self.sample_from_latent(n)
+        if self.use_gpu:
+            mem = mem.cuda()
 
         ### Decode logic
         if method == 'greedy':
