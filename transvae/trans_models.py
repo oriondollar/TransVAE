@@ -457,7 +457,7 @@ class EncoderDecoder(nn.Module):
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
         mem, mu, logvar, predicted_mask = self.encode(src, src_mask)
-        x = self.decode(mem, predicted_mask, tgt, tgt_mask)
+        x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
         return x, [mu, logvar, predicted_mask, src_mask]
 
