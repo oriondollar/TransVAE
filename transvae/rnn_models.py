@@ -174,7 +174,7 @@ class RNNAttnEncoder(nn.Module):
             attn_applied = torch.bmm(attn_weights, mem)
             mem = F.relu(attn_applied)
         if self.bypass_bottleneck:
-            mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
+            mu, logvar = Variable(torch.tensor([100.])), Variable(torch.tensor([100.]))
         else:
             mem = mem.permute(0, 2, 1)
             mem = self.conv_bottleneck(mem)
@@ -352,7 +352,7 @@ class MosesEncoder(nn.Module):
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
-        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, dropout=dropout, bidirectional=True)
+        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, bidirectional=True)
         self.z_means = nn.Linear(size*2, d_latent)
         self.z_var = nn.Linear(size*2, d_latent)
         self.norm = LayerNorm(size*2)
