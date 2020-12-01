@@ -442,8 +442,11 @@ class TransVAE(VAEShell):
             decoded = decoded.cuda()
 
         for i in range(max_len):
+            decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
+            if self.use_gpu:
+                decode_mask = decode_mask.cuda()
             out = self.model.decode(mem, src_mask, Variable(decoded),
-                                    Variable(subsequent_mask(decoded.size(1)).long()))
+                                    decode_mask)
             out = self.model.generator(out)
             prob = F.softmax(out[:,-1,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
