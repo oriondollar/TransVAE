@@ -425,13 +425,14 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def greedy_decode(self, mem):
+    def greedy_decode(self, mem, src_mask=None):
         """
         Greedy decode from model memory.
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
-        src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
+        if src_mask is None:
+            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
         if self.use_gpu:
             mem = mem.cuda()
@@ -467,7 +468,7 @@ class TransVAE(VAEShell):
         if self.use_gpu:
             data = data.cuda()
             self.model.cuda()
-            
+
         src = Variable(data[:,:-1]).long()
         src_mask = (src != self.pad_idx).unsqueeze(-2)
         start_symbol = self.params['CHAR_DICT']['<start>']
@@ -476,18 +477,11 @@ class TransVAE(VAEShell):
         ### Run through encoder to get memory keys and values
         mem, _, _, _ = self.model.encode(src, src_mask)
 
-        decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len):
-            out = self.model.decode(mem, src_mask, Variable(decoded),
-                                    Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,-1,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            next_word = next_word.unsqueeze(1)
-            decoded = torch.cat([decoded, next_word], dim=1)
+        if method=='greedy':
+            decoded = self.greedy_decode(mem, src_mask=src_mask)
+        else:
+            decoded = None
 
-        decoded = decoded[:,1:]
         if return_str:
             decoded = decode_smiles(decoded, self.params['ORG_DICT'])
         return decoded
