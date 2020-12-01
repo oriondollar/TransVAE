@@ -328,6 +328,10 @@ class VAEShell():
         data = data_gen(data, char_dict=self.params['CHAR_DICT'])
         src = Variable(data[:,:-1]).long()
 
+        if self.use_gpu:
+            src = src.cuda()
+            self.model.cuda()
+
         ### Run through encoder to get memory
         mem, _, _ = self.model.encode(src)
 
@@ -459,6 +463,11 @@ class TransVAE(VAEShell):
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+
+        if self.use_gpu:
+            data = data.cuda()
+            self.model.cuda()
+            
         src = Variable(data[:,:-1]).long()
         src_mask = (src != self.pad_idx).unsqueeze(-2)
         start_symbol = self.params['CHAR_DICT']['<start>']
