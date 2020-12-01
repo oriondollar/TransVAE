@@ -431,6 +431,7 @@ class TransVAE(VAEShell):
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
+        decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
         if src_mask is None:
             src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
@@ -438,8 +439,8 @@ class TransVAE(VAEShell):
             mem = mem.cuda()
             self.model.cuda()
             src_mask = src_mask.cuda()
+            decoded = decoded.cuda()
 
-        decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
         for i in range(max_len):
             out = self.model.decode(mem, src_mask, Variable(decoded),
                                     Variable(subsequent_mask(decoded.size(1)).long()))
