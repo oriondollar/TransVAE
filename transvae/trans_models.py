@@ -327,8 +327,8 @@ class VAEShell():
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=False)
+                                                shuffle=True, num_workers=0,
+                                                pin_memory=False, drop_last=True)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
         self.model.eval()
@@ -485,8 +485,8 @@ class TransVAE(VAEShell):
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=False)
+                                                shuffle=True, num_workers=0,
+                                                pin_memory=False, drop_last=True)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
         self.model.eval()
