@@ -334,7 +334,7 @@ class VAEShell():
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
-            log_file = open('accs/temp_log.txt', 'a')
+            log_file = open('accs/temp_log_{}.txt'.format(self.name), 'a')
             log_file.write('{}\n'.format(j))
             log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
@@ -492,7 +492,7 @@ class TransVAE(VAEShell):
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
-            log_file = open('accs/temp_log.txt', 'a')
+            log_file = open('accs/temp_log_{}.txt'.format(self.name), 'a')
             log_file.write('{}\n'.format(j))
             log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
