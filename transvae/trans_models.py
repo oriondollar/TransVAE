@@ -330,7 +330,7 @@ class VAEShell():
                                                 shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=False)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
-        
+
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
@@ -341,6 +341,8 @@ class VAEShell():
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
 
                 ### Run through encoder to get memory
                 mem, _, _ = self.model.encode(src)
@@ -498,7 +500,7 @@ class TransVAE(VAEShell):
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
 
-                src = Variable(data[:,:-1]).long()
+                src = Variable(batch_data[:,:-1]).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory keys and values
