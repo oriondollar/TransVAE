@@ -383,7 +383,7 @@ class VAEShell():
                     decoded_smiles.append(decoded)
 
         if return_mems:
-            return decoded_smiles, mems
+            return decoded_smiles, mems.detach().numpy()
         else:
             return decoded_smiles
 
