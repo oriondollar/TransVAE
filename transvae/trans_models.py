@@ -13,7 +13,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss, trans_ce_loss
+from loss import ce_loss, vae_ce_loss
 
 
 ####### MODEL SHELL ##########
@@ -30,12 +30,6 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
-        if 'LOSS_FUNC' not in self.params.keys():
-            self.params['LOSS_FUNC'] = 'VAE_CE'
-        if self.params['LOSS_FUNC'] == 'VAE_CE':
-            self.loss_fn = vae_ce_loss
-        elif self.params['LOSS_FUNC'] == 'TRANS_CE':
-            self.loss_fn = trans_ce_loss
         if 'BETA_INIT' not in self.params.keys():
             self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
@@ -56,6 +50,10 @@ class VAEShell():
             print("WARNING: MUST PROVIDE VOCABULARY KEY PRIOR TO TRAINING")
         self.vocab_size = len(self.params['CHAR_DICT'].keys())
         self.pad_idx = self.params['CHAR_DICT']['_']
+
+        ### Sequence length hard-coded into model
+        self.src_len = 126
+        self.tgt_len = 125
 
         ### Build empty structures for data storage
         self.n_epochs = 0
@@ -191,10 +189,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                                  self.params['CHAR_WEIGHTS'],
-                                                  beta)
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                                                 self.params['CHAR_WEIGHTS'],
+                                                 beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -242,10 +240,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                                  self.params['CHAR_WEIGHTS'],
-                                                  beta)
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                                                 self.params['CHAR_WEIGHTS'],
+                                                 beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -293,28 +291,43 @@ class VAEShell():
         z = torch.randn(size, self.model.encoder.z_means.out_features)
         return z
 
-    def greedy_decode(self, mem):
+    def greedy_decode(self, mem, src_mask=None):
         """
         Greedy decode from model memory.
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
-        tgt = torch.ones(mem.shape[0],max_len).fill_(start_symbol).long()
+        decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
+        tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
+        if src_mask is None:
+            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
         if self.use_gpu:
+            src_mask = src_mask.cuda()
+            decoded = decoded.cuda()
             tgt = tgt.cuda()
 
-        for i in range(max_len-1):
-            out, _ = self.model.decode(tgt, mem)
+        for i in range(max_len):
+            if self.model_type == 'transformer':
+                decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
+                if self.use_gpu:
+                    decode_mask = decode_mask.cuda()
+                out = self.model.decode(mem, src_mask, Variable(decoded),
+                                        decode_mask)
+            else:
+                out, _ = self.model.decode(tgt, mem)
             out = self.model.generator(out)
             prob = F.softmax(out[:,i,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
             next_word += 1
             tgt[:,i+1] = next_word
+            if self.model_type == 'transformer':
+                next_word = next_word.unsqueeze(1)
+                decoded = torch.cat([decoded, next_word], dim=1)
         decoded = tgt[:,1:]
         return decoded
 
-    def decode_from_src(self, data, method='greedy', log=True, return_str=True):
+    def decode_from_src(self, data, method='greedy', log=True, return_mems=True, return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -329,10 +342,12 @@ class VAEShell():
                                                 batch_size=self.params['BATCH_SIZE'],
                                                 shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=True)
-        self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
 
         self.model.eval()
         decoded_smiles = []
+        mems = torch.empty((data.shape[0], self.d_latent))
         for j, data in enumerate(data_iter):
             if log:
                 log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
@@ -344,13 +359,20 @@ class VAEShell():
                     batch_data = batch_data.cuda()
 
                 src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory
-                _, mem, _ = self.model.encode(src)
+                if self.model_type == 'transformer':
+                    _, mem, _ = self.model.encode(src, src_mask)
+                else:
+                    _, mem, _ = self.model.encode(src)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                mems[start:stop, :] = mem
 
                 ### Decode logic
                 if method == 'greedy':
-                    decoded = self.greedy_decode(mem)
+                    decoded = self.greedy_decode(mem, src_mask=src_mask)
                 else:
                     decoded = None
 
@@ -359,7 +381,11 @@ class VAEShell():
                     decoded_smiles += decoded
                 else:
                     decoded_smiles.append(decoded)
-        return decoded_smiles
+
+        if return_mems:
+            return decoded_smiles, mems
+        else:
+            return decoded_smiles
 
     def decode_from_mem(self, n, method='greedy', return_str=True):
         """
@@ -415,9 +441,15 @@ class TransVAE(VAEShell):
             bypass_bottleneck (bool): If false, model functions as standard autoencoder
         """
 
-        ### Sequence length hard-coded into model
-        self.src_len = 126
-        self.tgt_len = 125
+        ### Store architecture params
+        self.model_type = 'transformer'
+        self.N = N
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.d_latent = d_latent
+        self.h = h
+        self.dropout = dropout
+        self.bypass_bottleneck = bypass_bottleneck
 
         ### Build model architecture
         c = copy.deepcopy
@@ -444,85 +476,6 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def greedy_decode(self, mem, src_mask=None):
-        """
-        Greedy decode from model memory.
-        """
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.tgt_len
-        decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
-        if src_mask is None:
-            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
-
-        if self.use_gpu:
-            src_mask = src_mask.cuda()
-            decoded = decoded.cuda()
-
-        for i in range(max_len):
-            decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
-            if self.use_gpu:
-                decode_mask = decode_mask.cuda()
-            out = self.model.decode(mem, src_mask, Variable(decoded),
-                                    decode_mask)
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,-1,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            next_word = next_word.unsqueeze(1)
-            decoded = torch.cat([decoded, next_word], dim=1)
-
-        decoded = decoded[:,1:]
-        return decoded
-
-
-    def decode_from_src(self, data, method='greedy', log=True, return_str=True):
-        """
-        Method for encoding input smiles into memory and decoding back
-        into smiles
-
-        Arguments:
-            data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
-        """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-
-        data_iter = torch.utils.data.DataLoader(data,
-                                                batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=True)
-        self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
-
-        self.model.eval()
-        decoded_smiles = []
-        for j, data in enumerate(data_iter):
-            if log:
-                log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
-                log_file.write('{}\n'.format(j))
-                log_file.close()
-            for i in range(self.params['BATCH_CHUNKS']):
-                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-                if self.use_gpu:
-                    batch_data = batch_data.cuda()
-
-                src = Variable(batch_data[:,:-1]).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-
-                ### Run through encoder to get memory keys and values
-                _, mem, _, _ = self.model.encode(src, src_mask)
-
-                if method=='greedy':
-                    decoded = self.greedy_decode(mem, src_mask=src_mask)
-                else:
-                    decoded = None
-
-                if return_str:
-                    decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-                    decoded_smiles += decoded
-                else:
-                    decoded_smiles.append(decoded)
-
-        return decoded_smiles
-
 class EncoderDecoder(nn.Module):
     """
     A standard Encoder-Decoder architecture
@@ -537,10 +490,10 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem, mu, logvar, predicted_mask = self.encode(src, src_mask)
+        mem, mu, logvar = self.encode(src, src_mask)
         x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, [mu, logvar, predicted_mask, src_mask]
+        return x, mu, logvar
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -565,8 +518,6 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
-        self.learn_mask1 = nn.Linear(d_latent, d_latent*2)
-        self.learn_mask2 = nn.Linear(d_latent*2, layer.src_len+1)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -589,9 +540,7 @@ class VAEEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar, self.eps_scale)
-        predicted_mask = F.relu(self.learn_mask1(mu))
-        predicted_mask = F.relu(self.learn_mask2(predicted_mask).unsqueeze(1))
-        return mem, mu, logvar, predicted_mask
+        return mem, mu, logvar
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"

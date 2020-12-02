@@ -5,22 +5,8 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
-def trans_ce_loss(x, x_out, loss_items, weights, beta=1):
+def vae_ce_loss(x, x_out, mu, logvar, weights, beta=1):
     "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
-    mu, logvar, predicted_mask, true_mask = loss_items
-    x = x.long()[:,1:] - 1
-    x = x.contiguous().view(-1)
-    x_out = x_out.contiguous().view(-1, x_out.size(2))
-    BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
-    # MSE = F.mse_loss(predicted_mask, true_mask.float(), reduction='mean')
-    KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-    if torch.isnan(KLD):
-        KLD = 0.
-    return BCE + KLD, BCE, KLD
-
-def vae_ce_loss(x, x_out, loss_items, weights, beta=1):
-    "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
-    mu, logvar = loss_items[:2]
     x = x.long()[:,1:] - 1
     x = x.contiguous().view(-1)
     x_out = x_out.contiguous().view(-1, x_out.size(2))

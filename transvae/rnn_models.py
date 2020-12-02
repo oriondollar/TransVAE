@@ -49,14 +49,20 @@ class GruaVAE(VAEShell):
         if 'ADAM_LR' not in self.params.keys():
             self.params['ADAM_LR'] = 3e-4
 
-        ### Sequence length hard-coded into model
-        self.src_len = 127
-        self.tgt_len = 126
+        ### Store architecture params
+        self.model_type = 'rnn_attn'
+        self.N = N
+        self.d_model = d_model
+        self.d_latent = d_latent
+        self.dropout = dropout
+        self.tf = tf
+        self.bypass_attention = bypass_attention
+        self.bypass_bottleneck = bypass_bottleneck
 
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         encoder = RNNAttnEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_attention, bypass_bottleneck, self.device)
-        decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, self.tgt_len, tf, bypass_bottleneck, self.device)
+        decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, tf, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_model, self.vocab_size)
         tgt_embed = Embeddings(d_model, self.vocab_size)
@@ -87,14 +93,19 @@ class GruVAE(VAEShell):
         if 'ADAM_LR' not in self.params.keys():
             self.params['ADAM_LR'] = 3e-4
 
-        ### Sequence length hard-coded into model
-        self.src_len = 127
-        self.tgt_len = 126
+        ### Store architecture params
+        self.model_type = 'rnn'
+        self.N = N
+        self.d_model = d_model
+        self.d_latent = d_latent
+        self.dropout = dropout
+        self.tf = tf
+        self.bypass_bottleneck = bypass_bottleneck
 
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = RNNEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_bottleneck, self.device)
-        decoder = RNNDecoder(d_model, d_latent, N, dropout, self.tgt_len, tf, bypass_bottleneck, self.device)
+        encoder = RNNEncoder(d_model, d_latent, N, dropout, bypass_bottleneck, self.device)
+        decoder = RNNDecoder(d_model, d_latent, N, dropout, 125, tf, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_model, self.vocab_size)
         tgt_embed = Embeddings(d_model, self.vocab_size)
@@ -131,7 +142,7 @@ class RNNEncoderDecoder(nn.Module):
         mem, mu, logvar = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, [mu, logvar]
+        return x, mu, logvar
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
@@ -140,11 +151,11 @@ class RNNEncoderDecoder(nn.Module):
         return self.decoder(self.src_embed(tgt), mem)
 
 class RNNAttnEncoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, bypass_attention, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, src_length, bypass_attention, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
+        self.max_length = src_length+1
         self.bypass_attention = bypass_attention
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
@@ -187,11 +198,10 @@ class RNNAttnEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNAttnDecoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, tf, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
         self.teacher_force = tf
         if self.teacher_force:
             self.gru_size = self.size * 2
@@ -202,7 +212,6 @@ class RNNAttnDecoder(nn.Module):
 
         self.linear = nn.Linear(d_latent, 576)
         self.deconv_bottleneck = DeconvBottleneck(size)
-        self.attn = nn.Linear(self.size * 2, self.max_length)
         self.dropout = nn.Dropout(p=dropout)
         self.gru = nn.GRU(self.gru_size, self.size, num_layers=N, dropout=dropout)
         self.norm = LayerNorm(size)
@@ -230,11 +239,10 @@ class RNNAttnDecoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNEncoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
@@ -264,11 +272,11 @@ class RNNEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNDecoder(nn.Module):
-    def __init__(self, size, d_latent, N, dropout, max_length, tf, bypass_bottleneck, device):
+    def __init__(self, size, d_latent, N, dropout, tgt_length, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
+        self.max_length = tgt_length+1
         self.teacher_force = tf
         if self.teacher_force:
             self.gru_size = self.size * 2
@@ -289,7 +297,6 @@ class RNNDecoder(nn.Module):
             mem = F.relu(self.unbottleneck(mem))
             mem = mem.unsqueeze(1).repeat(1, self.max_length, 1)
             mem = self.norm(mem)
-            # mem = mem.permute(1, 0, 2)
         if self.teacher_force:
             mem = torch.cat((embedded, mem), dim=2)
         mem = mem.permute(1, 0, 2)
@@ -317,13 +324,18 @@ class MosesVAE(VAEShell):
         if 'ADAM_LR' not in self.params.keys():
             self.params['ADAM_LR'] = 3e-4
 
-        ### Sequence length hard-coded into model
-        self.src_len = 127
-        self.tgt_len = 126
+        ### Store architecture params
+        self.model_type = 'moses'
+        self.N = N
+        self.d_model = d_model
+        self.d_emb = d_emb
+        self.d_latent = d_latent
+        self.dropout = dropout
+        self.bypass_bottleneck = bypass_bottleneck
 
         ### Build model architecture
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = MosesEncoder(d_emb, d_model // 2, d_latent, 1, dropout, self.src_len, bypass_bottleneck, self.device)
+        encoder = MosesEncoder(d_emb, d_model // 2, d_latent, 1, dropout, bypass_bottleneck, self.device)
         decoder = MosesDecoder(d_emb, d_model, d_latent, N, dropout, self.tgt_len, bypass_bottleneck, self.device)
         generator = Generator(d_model, self.vocab_size)
         src_embed = Embeddings(d_emb, self.vocab_size)
@@ -343,12 +355,11 @@ class MosesVAE(VAEShell):
 
 
 class MosesEncoder(nn.Module):
-    def __init__(self, d_emb, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, d_emb, size, d_latent, N, dropout, bypass_bottleneck, device):
         super().__init__()
         self.d_emb = d_emb
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
@@ -379,12 +390,12 @@ class MosesEncoder(nn.Module):
         return torch.zeros(self.n_layers*2, batch_size, self.size, device=self.device)
 
 class MosesDecoder(nn.Module):
-    def __init__(self, d_emb, size, d_latent, N, dropout, max_length, bypass_bottleneck, device):
+    def __init__(self, d_emb, size, d_latent, N, dropout, tgt_length, bypass_bottleneck, device):
         super().__init__()
         self.d_emb = d_emb
         self.size = size
         self.n_layers = N
-        self.max_length = max_length
+        self.max_length = tgt_length+1
         self.bypass_bottleneck = bypass_bottleneck
         self.device = device
 
