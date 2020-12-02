@@ -350,7 +350,7 @@ class VAEShell():
         mems = torch.empty((data.shape[0], self.d_latent))
         for j, data in enumerate(data_iter):
             if log:
-                log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
+                log_file = open('calcs/{}_progress.txt'.format(self.name), 'a')
                 log_file.write('{}\n'.format(j))
                 log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
