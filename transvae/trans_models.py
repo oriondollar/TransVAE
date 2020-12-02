@@ -314,7 +314,7 @@ class VAEShell():
         decoded = tgt[:,1:]
         return decoded
 
-    def decode_from_src(self, data, method='greedy', return_str=True):
+    def decode_from_src(self, data, method='greedy', log=True, return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -327,16 +327,17 @@ class VAEShell():
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=True, num_workers=0,
+                                                shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=True)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
-            log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
-            log_file.write('{}\n'.format(j))
-            log_file.close()
+            if log:
+                log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
+                log_file.write('{}\n'.format(j))
+                log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                 if self.use_gpu:
@@ -345,7 +346,7 @@ class VAEShell():
                 src = Variable(batch_data[:,:-1]).long()
 
                 ### Run through encoder to get memory
-                mem, _, _ = self.model.encode(src)
+                _, mem, _ = self.model.encode(src)
 
                 ### Decode logic
                 if method == 'greedy':
@@ -355,7 +356,9 @@ class VAEShell():
 
                 if return_str:
                     decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-                decoded_smiles += decoded
+                    decoded_smiles += decoded
+                else:
+                    decoded_smiles.append(decoded)
         return decoded_smiles
 
     def decode_from_mem(self, n, method='greedy', return_str=True):
@@ -472,7 +475,7 @@ class TransVAE(VAEShell):
         return decoded
 
 
-    def decode_from_src(self, data, method='greedy', return_str=True):
+    def decode_from_src(self, data, method='greedy', log=True, return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -485,16 +488,17 @@ class TransVAE(VAEShell):
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=True, num_workers=0,
+                                                shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=True)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
-            log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
-            log_file.write('{}\n'.format(j))
-            log_file.close()
+            if log:
+                log_file = open('accs/{}_progress.txt'.format(self.name), 'a')
+                log_file.write('{}\n'.format(j))
+                log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                 if self.use_gpu:
@@ -504,7 +508,7 @@ class TransVAE(VAEShell):
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory keys and values
-                mem, _, _, _ = self.model.encode(src, src_mask)
+                _, mem, _, _ = self.model.encode(src, src_mask)
 
                 if method=='greedy':
                     decoded = self.greedy_decode(mem, src_mask=src_mask)
@@ -513,7 +517,10 @@ class TransVAE(VAEShell):
 
                 if return_str:
                     decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-                decoded_smiles += decoded
+                    decoded_smiles += decoded
+                else:
+                    decoded_smiles.append(decoded)
+
         return decoded_smiles
 
 class EncoderDecoder(nn.Module):
