@@ -302,8 +302,6 @@ class VAEShell():
         tgt = torch.ones(mem.shape[0],max_len).fill_(start_symbol).long()
 
         if self.use_gpu:
-            mem = mem.cuda()
-            self.model.cuda()
             tgt = tgt.cuda()
 
         for i in range(max_len-1):
@@ -326,24 +324,32 @@ class VAEShell():
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
 
-        if self.use_gpu:
-            src = src.cuda()
-            self.model.cuda()
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=False)
+        self.model.eval()
+        decoded_smiles = []
+        for j, data in enumerate(data_iter):
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
 
-        ### Run through encoder to get memory
-        mem, _, _ = self.model.encode(src)
+                ### Run through encoder to get memory
+                mem, _, _ = self.model.encode(src)
 
-        ### Decode logic
-        if method == 'greedy':
-            decoded = self.greedy_decode(mem)
-        else:
-            decoded = None
+                ### Decode logic
+                if method == 'greedy':
+                    decoded = self.greedy_decode(mem)
+                else:
+                    decoded = None
 
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
+                if return_str:
+                    decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+                decoded_smiles += decoded
+        return decoded_smiles
 
     def decode_from_mem(self, n, method='greedy', return_str=True):
         """
@@ -354,6 +360,9 @@ class VAEShell():
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         mem = self.sample_from_latent(n)
+
+        if self.use_gpu:
+            mem = mem.cuda()
 
         ### Decode logic
         if method == 'greedy':
@@ -436,8 +445,6 @@ class TransVAE(VAEShell):
             src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
         if self.use_gpu:
-            mem = mem.cuda()
-            self.model.cuda()
             src_mask = src_mask.cuda()
             decoded = decoded.cuda()
 
@@ -469,26 +476,36 @@ class TransVAE(VAEShell):
         """
         data = data_gen(data, char_dict=self.params['CHAR_DICT'])
 
-        if self.use_gpu:
-            data = data.cuda()
-            self.model.cuda()
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=False)
+        self.model.eval()
+        decoded_smiles = []
+        for j, data in enumerate(data_iter):
+            log_file = open('accs/temp_log.txt', 'a')
+            log_file.write('{}\n'.format(j))
+            log_file.close()
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
 
-        src = Variable(data[:,:-1]).long()
-        src_mask = (src != self.pad_idx).unsqueeze(-2)
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.src_len
+                src = Variable(data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
 
-        ### Run through encoder to get memory keys and values
-        mem, _, _, _ = self.model.encode(src, src_mask)
+                ### Run through encoder to get memory keys and values
+                mem, _, _, _ = self.model.encode(src, src_mask)
 
-        if method=='greedy':
-            decoded = self.greedy_decode(mem, src_mask=src_mask)
-        else:
-            decoded = None
+                if method=='greedy':
+                    decoded = self.greedy_decode(mem, src_mask=src_mask)
+                else:
+                    decoded = None
 
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
+                if return_str:
+                    decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+                decoded_smiles += decoded
+        return decoded_smiles
 
 class EncoderDecoder(nn.Module):
     """
