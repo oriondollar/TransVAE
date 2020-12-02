@@ -347,7 +347,7 @@ class VAEShell():
 
         self.model.eval()
         decoded_smiles = []
-        mems = torch.empty((data.shape[0], self.d_latent))
+        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
         for j, data in enumerate(data_iter):
             if log:
                 log_file = open('calcs/{}_progress.txt'.format(self.name), 'a')
@@ -368,7 +368,7 @@ class VAEShell():
                     _, mem, _ = self.model.encode(src)
                 start = j*self.batch_size+i*self.chunk_size
                 stop = j*self.batch_size+(i+1)*self.chunk_size
-                mems[start:stop, :] = mem
+                mems[start:stop, :] = mem.detach().cpu()
 
                 ### Decode logic
                 if method == 'greedy':
