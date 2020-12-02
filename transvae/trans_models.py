@@ -329,9 +329,14 @@ class VAEShell():
                                                 batch_size=self.params['BATCH_SIZE'],
                                                 shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=False)
+        self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
+        
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
+            log_file = open('accs/temp_log.txt', 'a')
+            log_file.write('{}\n'.format(j))
+            log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                 if self.use_gpu:
@@ -480,6 +485,8 @@ class TransVAE(VAEShell):
                                                 batch_size=self.params['BATCH_SIZE'],
                                                 shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=False)
+        self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
+
         self.model.eval()
         decoded_smiles = []
         for j, data in enumerate(data_iter):
