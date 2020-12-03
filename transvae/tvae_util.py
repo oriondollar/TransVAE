@@ -154,9 +154,6 @@ def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
         position_acc.append(position_accs[0,i] / position_accs[1,i])
     return smile_acc, token_acc, position_acc
 
-
-
-
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
     mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
     ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)

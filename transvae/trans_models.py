@@ -1,4 +1,5 @@
 import os
+import json
 from time import perf_counter
 import shutil
 import imageio
@@ -63,9 +64,11 @@ class VAEShell():
                               'model_state_dict': None,
                               'optimizer_state_dict': None,
                               'best_loss': self.best_loss,
-                              'params': self.params}
+                              'params': self.params,
+                              'latent_distribution': None}
+        self.loaded_from = None
 
-    def save(self, state, fn, path='checkpoints'):
+    def save(self, state, fn, path='checkpoints', use_name=True):
         """
         Saves current model state to .ckpt file
 
@@ -75,16 +78,20 @@ class VAEShell():
             path (str): Folder to store saved checkpoints
         """
         os.makedirs(path, exist_ok=True)
-        if os.path.splitext(fn)[1] == '':
-            if self.name is not None:
-                fn += '_' + self.name
-            fn += '.ckpt'
+        if use_name:
+            if os.path.splitext(fn)[1] == '':
+                if self.name is not None:
+                    fn += '_' + self.name
+                fn += '.ckpt'
+            else:
+                if self.name is not None:
+                    fn, ext = fn.split('.')
+                    fn += '_' + self.name
+                    fn += '.' + ext
+            save_path = os.path.join(path, fn)
         else:
-            if self.name is not None:
-                fn, ext = fn.split('.')
-                fn += '_' + self.name
-                fn += '.' + ext
-        torch.save(state, os.path.join(path, fn))
+            save_path = fn
+        torch.save(state, save_path)
 
     def load(self, checkpoint_path):
         """
@@ -94,8 +101,12 @@ class VAEShell():
             checkpoint_path (str, required): Path to saved .ckpt file
         """
         loaded_checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        self.loaded_from = checkpoint_path
         for k in self.current_state.keys():
-            self.current_state[k] = loaded_checkpoint[k]
+            try:
+                self.current_state[k] = loaded_checkpoint[k]
+            except KeyError:
+                self.current_state[k] = None
 
         if self.name is None:
             self.name = self.current_state['name']
@@ -284,11 +295,36 @@ class VAEShell():
             shutil.rmtree('gif')
 
     ### Sampling and Decoding Functions
-    def sample_from_latent(self, size):
+    def import_latent_distribution(self, path, set='train', override=False):
+        assert self.loaded_from is not None, "Checkpoint must be loaded to store latent distribution"
+        write_latent = True
+        if self.current_state['latent_distribution'] is not None:
+            if not override:
+                print('ERROR: Latent distribution already loaded. Set override=True to load anyway')
+                write_latent = False
+            else:
+                print('WARNING: Latent distribution already loaded. Overwriting...')
+        if write_latent:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            latent_means = data['latent_distribution'][set][0]
+            latent_stds = data['latent_distribution'][set][1]
+            self.current_state['latent_distribution'] = {'means': np.array(latent_means),
+                                                         'stddevs': np.array(latent_stds)}
+            checkpoint_path = self.loaded_from
+            self.save(self.current_state, checkpoint_path, use_name=False)
+
+    def sample_from_latent(self, size, mode='dist'):
         """
         Quickly sample from latent dimension
         """
-        z = torch.randn(size, self.model.encoder.z_means.out_features)
+        if mode == 'dist':
+            assert self.current_state['latent_distribution'] is not None, "Error: Must import latent distribution to sample with this mode"
+            means = torch.tensor(self.current_state['latent_distribution']['means']).unsqueeze(0).repeat(size, 1)
+            stds = torch.tensor(self.current_state['latent_distribution']['stddevs']).unsqueeze(0).repeat(size, 1)
+            z = torch.normal(means, stds).float()
+        elif mode == 'rand':
+            z = torch.randn(size, self.model.encoder.z_means.out_features)
         return z
 
     def greedy_decode(self, mem, src_mask=None):
@@ -387,7 +423,7 @@ class VAEShell():
         else:
             return decoded_smiles
 
-    def decode_from_mem(self, n, method='greedy', return_str=True):
+    def decode_from_mem(self, n, method='greedy', sample_mode='dist', return_str=True):
         """
         Method for decoding sampled memory back into smiles
 
@@ -395,7 +431,7 @@ class VAEShell():
             n (int): Number of data points to sample
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
-        mem = self.sample_from_latent(n)
+        mem = self.sample_from_latent(n, mode=sample_mode)
 
         if self.use_gpu:
             mem = mem.cuda()
