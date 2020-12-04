@@ -485,7 +485,7 @@ class VAEShell():
             if save_fn == 'model_name':
                 save_fn = self.name
             save_path = os.path.join(save_dir, save_fn)
-            np.save(save_path, mems.detach().numpy())
+            np.save('{}.npy'.format(save_path), mems.detach().numpy())
         else:
             return mems
 
