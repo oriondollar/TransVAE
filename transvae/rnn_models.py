@@ -24,7 +24,7 @@ class GruaVAE(VAEShell):
     RNN-based VAE class with attention.
     """
     def __init__(self, params, name=None, N=3, d_model=128,
-                 d_latent=128, dropout=0.1, tf=False,
+                 d_latent=128, dropout=0.1, tf=True,
                  bypass_attention=False,
                  bypass_bottleneck=False):
         super().__init__(params, name)
@@ -85,7 +85,7 @@ class GruVAE(VAEShell):
     RNN-based VAE without attention.
     """
     def __init__(self, params, name=None, N=3, d_model=128,
-                 d_latent=128, dropout=0.1, tf=False,
+                 d_latent=128, dropout=0.1, tf=True,
                  bypass_bottleneck=False):
         super().__init__(params, name)
 
