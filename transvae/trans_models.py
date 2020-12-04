@@ -446,7 +446,7 @@ class VAEShell():
             decoded = decode_smiles(decoded, self.params['ORG_DICT'])
         return decoded
 
-    def calc_mems(self, data, save_dir='memory', save_fn='model_name', save=True):
+    def calc_mems(self, data, log=True, save_dir='memory', save_fn='model_name', save=True):
         """
         Method for calculating and saving the memory of each neural net.
         """
