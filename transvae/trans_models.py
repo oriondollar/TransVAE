@@ -446,6 +446,50 @@ class VAEShell():
             decoded = decode_smiles(decoded, self.params['ORG_DICT'])
         return decoded
 
+    def calc_mems(self, data, save_dir='memory', save_fn='model_name', save=True):
+        """
+        Method for calculating and saving the memory of each neural net.
+        """
+        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=True)
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
+        for j, data in enumerate(data_iter):
+            if log:
+                log_file = open('memory/{}_progress.txt'.format(self.name), 'a')
+                log_file.write('{}\n'.format(j))
+                log_file.close()
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+
+                ### Run through encoder to get memory
+                if self.model_type == 'transformer':
+                    _, mem, _ = self.model.encode(src, src_mask)
+                else:
+                    _, mem, _ = self.model.encode(src)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                mems[start:stop, :] = mem.detach().cpu()
+
+        if save:
+            if save_fn == 'model_name':
+                save_fn = self.name
+            save_path = os.path.join(save_dir, save_fn)
+            np.save(save_path, mems.detach().numpy())
+        else:
+            return mems
+
+
 
 ####### Encoder, Decoder and Generator ############
 
