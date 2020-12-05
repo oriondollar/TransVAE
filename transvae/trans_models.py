@@ -299,9 +299,8 @@ class VAEShell():
                 if save:
                     self.save(self.current_state, 'best')
 
-            if (self.n_epochs - 1) % save_freq == 0:
-                print(self.n_epochs)
-                epoch_str = str(self.n_epochs - 1)
+            if (self.n_epochs) % save_freq == 0:
+                epoch_str = str(self.n_epochs)
                 while len(epoch_str) < 3:
                     epoch_str = '0' + epoch_str
                 if save:
