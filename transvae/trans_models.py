@@ -605,7 +605,7 @@ class VAEEncoder(nn.Module):
     def reparameterize(self, mu, logvar, eps_scale=1):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std) * eps_scale
-        return mu * eps*std
+        return mu + eps*std
 
     def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
