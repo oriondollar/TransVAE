@@ -39,7 +39,7 @@ def attention(query, key, value, mask=None, dropout=None):
 
 class ListModule(nn.Module):
     def __init__(self, *args):
-        super(ListModule, self).__init__()
+        super().__init__()
         idx = 0
         for module in args:
             self.add_module(str(idx), module)
@@ -83,8 +83,11 @@ def smi_tokenizer(smile):
     return tokens
 
 def encode_smiles(smile, max_len, char_dict):
-    for _ in range(max_len - len(smile)):
-        smile.append('_')
+    for i in range(max_len - len(smile)):
+        if i == 0:
+            smile.append('<end>')
+        else:
+            smile.append('_')
     smile_vec = [char_dict[c] for c in smile]
     return smile_vec
 

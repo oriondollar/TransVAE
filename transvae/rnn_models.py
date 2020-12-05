@@ -171,7 +171,7 @@ class RNNAttnEncoder(nn.Module):
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
-        return mu * eps*std
+        return mu + eps*std
 
     def forward(self, x):
         h = self.initH(x.shape[0])
@@ -254,7 +254,7 @@ class RNNEncoder(nn.Module):
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
-        return mu * eps*std
+        return mu + eps*std
 
     def forward(self, x):
         h = self.initH(x.shape[0])
@@ -371,7 +371,7 @@ class MosesEncoder(nn.Module):
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
-        return mu * eps*std
+        return mu + eps*std
 
     def forward(self, x):
         h = self.initH(x.shape[0])
