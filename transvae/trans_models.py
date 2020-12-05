@@ -120,7 +120,7 @@ class VAEShell():
         self.model.load_state_dict(self.current_state['model_state_dict'])
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
-    def train(self, train_data, val_data, epochs=100, save=True, log=True, make_grad_gif=False):
+    def train(self, train_data, val_data, epochs=100, save=True, save_freq=None, log=True, make_grad_gif=False):
         """
         Train model and validate
 
@@ -151,6 +151,10 @@ class VAEShell():
 
         torch.backends.cudnn.benchmark = True
 
+        ### Determine save frequency
+        if save_freq is None:
+            save_freq = epochs
+
         ### Setup log file
         if log:
             os.makedirs('trials', exist_ok=True)
@@ -166,7 +170,7 @@ class VAEShell():
                 already_wrote = False
             log_file = open(log_fn, 'a')
             if not already_wrote:
-                log_file.write('epoch,batch_idx,data_type,tot_loss,bce_loss,kld_loss\n')
+                log_file.write('epoch,batch_idx,data_type,tot_loss,bce_loss,kld_loss,run_time\n')
             log_file.close()
 
         ### Gradient Gif
@@ -189,6 +193,7 @@ class VAEShell():
                 avg_losses = []
                 avg_bce_losses = []
                 avg_kld_losses = []
+                start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
                     batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                     if self.use_gpu:
@@ -218,6 +223,8 @@ class VAEShell():
                     frame += 1
                 self.optimizer.step()
                 self.model.zero_grad()
+                stop_run_time = perf_counter()
+                run_time = round(stop_run_time - start_run_time, 5)
                 avg_loss = np.mean(avg_losses)
                 avg_bce = np.mean(avg_bce_losses)
                 avg_kld = np.mean(avg_kld_losses)
@@ -225,11 +232,12 @@ class VAEShell():
 
                 if log:
                     log_file = open(log_fn, 'a')
-                    log_file.write('{},{},{},{},{},{}\n'.format(self.n_epochs,
+                    log_file.write('{},{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'train',
                                                                 avg_loss,
                                                                 avg_bce,
-                                                                avg_kld))
+                                                                avg_kld,
+                                                                run_time))
                     log_file.close()
             train_loss = np.mean(losses)
 
@@ -240,6 +248,7 @@ class VAEShell():
                 avg_losses = []
                 avg_bce_losses = []
                 avg_kld_losses = []
+                start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
                     batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
                     if self.use_gpu:
@@ -258,6 +267,8 @@ class VAEShell():
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
+                stop_run_time = perf_counter()
+                run_time = round(stop_run_time - start_run_time, 5)
                 avg_loss = np.mean(avg_losses)
                 avg_bce = np.mean(avg_bce_losses)
                 avg_kld = np.mean(avg_kld_losses)
@@ -265,11 +276,12 @@ class VAEShell():
 
                 if log:
                     log_file = open(log_fn, 'a')
-                    log_file.write('{},{},{},{},{},{}\n'.format(self.n_epochs,
+                    log_file.write('{},{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'test',
                                                                 avg_loss,
                                                                 avg_bce,
-                                                                avg_kld))
+                                                                avg_kld,
+                                                                run_time))
                     log_file.close()
 
             self.n_epochs += 1
@@ -286,6 +298,14 @@ class VAEShell():
                 self.current_state['best_loss'] = self.best_loss
                 if save:
                     self.save(self.current_state, 'best')
+
+            if (self.n_epochs - 1) % save_freq == 0:
+                print(self.n_epochs)
+                epoch_str = str(self.n_epochs - 1)
+                while len(epoch_str) < 3:
+                    epoch_str = '0' + epoch_str
+                if save:
+                    self.save(self.current_state, epoch_str)
 
             if save:
                 self.save(self.current_state, 'latest')

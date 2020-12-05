@@ -127,6 +127,7 @@ def decode_smiles(encoded_tensors, org_dict):
             idx = encoded_tensor[i]
             smile += org_dict[idx]
         smile = smile.replace('_', '')
+        smile = smile.replace('<end>', '')
         smiles.append(smile)
     return smiles
 
