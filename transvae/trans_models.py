@@ -1,4 +1,6 @@
 import os
+import json
+from time import perf_counter
 import shutil
 import imageio
 import numpy as np
@@ -12,7 +14,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss, trans_ce_loss
+from loss import ce_loss, vae_ce_loss
 
 
 ####### MODEL SHELL ##########
@@ -29,14 +31,12 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
-        if 'LOSS_FUNC' not in self.params.keys():
-            self.params['LOSS_FUNC'] = 'VAE_CE'
-        if self.params['LOSS_FUNC'] == 'VAE_CE':
-            self.loss_fn = vae_ce_loss
-        elif self.params['LOSS_FUNC'] == 'TRANS_CE':
-            self.loss_fn = trans_ce_loss
+        if 'BETA_INIT' not in self.params.keys():
+            self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
-            self.params['BETA'] = 0.1
+            self.params['BETA'] = 0.05
+        if 'ANNEAL_START' not in self.params.keys():
+            self.params['ANNEAL_START'] = 0
         if 'LR' not in self.params.keys():
             self.params['LR'] = 1
         if 'WARMUP_STEPS' not in self.params.keys():
@@ -52,6 +52,10 @@ class VAEShell():
         self.vocab_size = len(self.params['CHAR_DICT'].keys())
         self.pad_idx = self.params['CHAR_DICT']['_']
 
+        ### Sequence length hard-coded into model
+        self.src_len = 126
+        self.tgt_len = 125
+
         ### Build empty structures for data storage
         self.n_epochs = 0
         self.best_loss = np.inf
@@ -60,9 +64,11 @@ class VAEShell():
                               'model_state_dict': None,
                               'optimizer_state_dict': None,
                               'best_loss': self.best_loss,
-                              'params': self.params}
+                              'params': self.params,
+                              'latent_distribution': None}
+        self.loaded_from = None
 
-    def save(self, state, fn, path='checkpoints'):
+    def save(self, state, fn, path='checkpoints', use_name=True):
         """
         Saves current model state to .ckpt file
 
@@ -72,16 +78,20 @@ class VAEShell():
             path (str): Folder to store saved checkpoints
         """
         os.makedirs(path, exist_ok=True)
-        if os.path.splitext(fn)[1] == '':
-            if self.name is not None:
-                fn += '_' + self.name
-            fn += '.ckpt'
+        if use_name:
+            if os.path.splitext(fn)[1] == '':
+                if self.name is not None:
+                    fn += '_' + self.name
+                fn += '.ckpt'
+            else:
+                if self.name is not None:
+                    fn, ext = fn.split('.')
+                    fn += '_' + self.name
+                    fn += '.' + ext
+            save_path = os.path.join(path, fn)
         else:
-            if self.name is not None:
-                fn, ext = fn.split('.')
-                fn += '_' + self.name
-                fn += '.' + ext
-        torch.save(state, os.path.join(path, fn))
+            save_path = fn
+        torch.save(state, save_path)
 
     def load(self, checkpoint_path):
         """
@@ -91,8 +101,12 @@ class VAEShell():
             checkpoint_path (str, required): Path to saved .ckpt file
         """
         loaded_checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        self.loaded_from = checkpoint_path
         for k in self.current_state.keys():
-            self.current_state[k] = loaded_checkpoint[k]
+            try:
+                self.current_state[k] = loaded_checkpoint[k]
+            except KeyError:
+                self.current_state[k] = None
 
         if self.name is None:
             self.name = self.current_state['name']
@@ -161,11 +175,16 @@ class VAEShell():
             images = []
             frame = 0
 
+        ### Initialize Annealer
+        kl_annealer = KLAnnealer(self.params['BETA_INIT'], self.params['BETA'],
+                                 epochs, self.params['ANNEAL_START'])
+
         ### Epoch loop
         for epoch in range(epochs):
             ### Train Loop
             self.model.train()
             losses = []
+            beta = kl_annealer(epoch)
             for j, data in enumerate(train_iter):
                 avg_losses = []
                 avg_bce_losses = []
@@ -181,12 +200,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                                  self.params['CHAR_WEIGHTS'],
-                                                  self.params['BETA'])
-                    # print(src[0,1:].long() - 1)
-                    # print(np.argmax(x_out[0,:,:].detach().numpy(), axis=1))
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                                                 self.params['CHAR_WEIGHTS'],
+                                                 beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -234,10 +251,10 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, loss_items = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_fn(src, x_out, loss_items,
-                                                  self.params['CHAR_WEIGHTS'],
-                                                  self.params['BETA'])
+                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
+                                                 self.params['CHAR_WEIGHTS'],
+                                                 beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -257,7 +274,7 @@ class VAEShell():
 
             self.n_epochs += 1
             val_loss = np.mean(losses)
-            print('Epoch - {} Train - {} Val - {}'.format(epoch+1, train_loss, val_loss))
+            print('Epoch - {} Train - {} Val - {} KLBeta - {}'.format(self.n_epochs, train_loss, val_loss, beta))
 
             ### Update current state and save model
             self.current_state['epoch'] = self.n_epochs
@@ -278,32 +295,75 @@ class VAEShell():
             shutil.rmtree('gif')
 
     ### Sampling and Decoding Functions
-    def sample_from_latent(self, size):
+    def import_latent_distribution(self, path, set='train', override=False):
+        assert self.loaded_from is not None, "Checkpoint must be loaded to store latent distribution"
+        write_latent = True
+        if self.current_state['latent_distribution'] is not None:
+            if not override:
+                print('ERROR: Latent distribution already loaded. Set override=True to load anyway')
+                write_latent = False
+            else:
+                print('WARNING: Latent distribution already loaded. Overwriting...')
+        if write_latent:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            latent_means = data['latent_distribution'][set][0]
+            latent_stds = data['latent_distribution'][set][1]
+            self.current_state['latent_distribution'] = {'means': np.array(latent_means),
+                                                         'stddevs': np.array(latent_stds)}
+            checkpoint_path = self.loaded_from
+            self.save(self.current_state, checkpoint_path, use_name=False)
+
+    def sample_from_latent(self, size, mode='dist'):
         """
         Quickly sample from latent dimension
         """
-        z = torch.randn(size, self.model.encoder.z_means.out_features)
+        if mode == 'dist':
+            assert self.current_state['latent_distribution'] is not None, "Error: Must import latent distribution to sample with this mode"
+            means = torch.tensor(self.current_state['latent_distribution']['means']).unsqueeze(0).repeat(size, 1)
+            stds = torch.tensor(self.current_state['latent_distribution']['stddevs']).unsqueeze(0).repeat(size, 1)
+            z = torch.normal(means, stds).float()
+        elif mode == 'rand':
+            z = torch.randn(size, self.model.encoder.z_means.out_features)
         return z
 
-    def greedy_decode(self, mem):
+    def greedy_decode(self, mem, src_mask=None):
         """
         Greedy decode from model memory.
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
+        decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
+        tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
+        if src_mask is None:
+            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
-        tgt = torch.ones(mem.shape[0],max_len).fill_(start_symbol).long()
-        for i in range(max_len-1):
-            out, _ = self.model.decode(tgt, mem)
+        if self.use_gpu:
+            src_mask = src_mask.cuda()
+            decoded = decoded.cuda()
+            tgt = tgt.cuda()
+
+        for i in range(max_len):
+            if self.model_type == 'transformer':
+                decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
+                if self.use_gpu:
+                    decode_mask = decode_mask.cuda()
+                out = self.model.decode(mem, src_mask, Variable(decoded),
+                                        decode_mask)
+            else:
+                out, _ = self.model.decode(tgt, mem)
             out = self.model.generator(out)
             prob = F.softmax(out[:,i,:], dim=-1)
             _, next_word = torch.max(prob, dim=1)
             next_word += 1
             tgt[:,i+1] = next_word
+            if self.model_type == 'transformer':
+                next_word = next_word.unsqueeze(1)
+                decoded = torch.cat([decoded, next_word], dim=1)
         decoded = tgt[:,1:]
         return decoded
 
-    def decode_from_src(self, data, method='greedy', return_str=True):
+    def decode_from_src(self, data, method='greedy', log=True, return_mems=True, return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -313,22 +373,57 @@ class VAEShell():
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
         data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
 
-        ### Run through encoder to get memory
-        mem, _, _ = self.model.encode(src)
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=True)
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
 
-        ### Decode logic
-        if method == 'greedy':
-            decoded = self.greedy_decode(mem)
+        self.model.eval()
+        decoded_smiles = []
+        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
+        for j, data in enumerate(data_iter):
+            if log:
+                log_file = open('calcs/{}_progress.txt'.format(self.name), 'a')
+                log_file.write('{}\n'.format(j))
+                log_file.close()
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+
+                ### Run through encoder to get memory
+                if self.model_type == 'transformer':
+                    _, mem, _ = self.model.encode(src, src_mask)
+                else:
+                    _, mem, _ = self.model.encode(src)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                mems[start:stop, :] = mem.detach().cpu()
+
+                ### Decode logic
+                if method == 'greedy':
+                    decoded = self.greedy_decode(mem, src_mask=src_mask)
+                else:
+                    decoded = None
+
+                if return_str:
+                    decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+                    decoded_smiles += decoded
+                else:
+                    decoded_smiles.append(decoded)
+
+        if return_mems:
+            return decoded_smiles, mems.detach().numpy()
         else:
-            decoded = None
+            return decoded_smiles
 
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
-
-    def decode_from_mem(self, n, method='greedy', return_str=True):
+    def decode_from_mem(self, n, method='greedy', sample_mode='dist', return_str=True):
         """
         Method for decoding sampled memory back into smiles
 
@@ -336,7 +431,10 @@ class VAEShell():
             n (int): Number of data points to sample
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
-        mem = self.sample_from_latent(n)
+        mem = self.sample_from_latent(n, mode=sample_mode)
+
+        if self.use_gpu:
+            mem = mem.cuda()
 
         ### Decode logic
         if method == 'greedy':
@@ -347,6 +445,50 @@ class VAEShell():
         if return_str:
             decoded = decode_smiles(decoded, self.params['ORG_DICT'])
         return decoded
+
+    def calc_mems(self, data, log=True, save_dir='memory', save_fn='model_name', save=True):
+        """
+        Method for calculating and saving the memory of each neural net.
+        """
+        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=True)
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
+        for j, data in enumerate(data_iter):
+            if log:
+                log_file = open('memory/{}_progress.txt'.format(self.name), 'a')
+                log_file.write('{}\n'.format(j))
+                log_file.close()
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+
+                ### Run through encoder to get memory
+                if self.model_type == 'transformer':
+                    mem, _, _ = self.model.encode(src, src_mask)
+                else:
+                    mem, _, _ = self.model.encode(src)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                mems[start:stop, :] = mem.detach().cpu()
+
+        if save:
+            if save_fn == 'model_name':
+                save_fn = self.name
+            save_path = os.path.join(save_dir, save_fn)
+            np.save('{}.npy'.format(save_path), mems.detach().numpy())
+        else:
+            return mems
+
 
 
 ####### Encoder, Decoder and Generator ############
@@ -379,9 +521,15 @@ class TransVAE(VAEShell):
             bypass_bottleneck (bool): If false, model functions as standard autoencoder
         """
 
-        ### Sequence length hard-coded into model
-        self.src_len = 126
-        self.tgt_len = 125
+        ### Store architecture params
+        self.model_type = 'transformer'
+        self.N = N
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.d_latent = d_latent
+        self.h = h
+        self.dropout = dropout
+        self.bypass_bottleneck = bypass_bottleneck
 
         ### Build model architecture
         c = copy.deepcopy
@@ -408,40 +556,6 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def decode_from_src(self, data, method='greedy', return_str=True):
-        """
-        Method for encoding input smiles into memory and decoding back
-        into smiles
-
-        Arguments:
-            data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
-        """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
-        src = Variable(data[:,:-1]).long()
-        src_mask = (src != self.pad_idx).unsqueeze(-2)
-        start_symbol = self.params['CHAR_DICT']['<start>']
-        max_len = self.src_len
-
-        ### Run through encoder to get memory keys and values
-        mem, _, _, _ = self.model.encode(src, src_mask)
-
-        decoded = torch.ones(data.shape[0],1).fill_(start_symbol).type_as(src.data)
-        for i in range(max_len):
-            out = self.model.decode(mem, src_mask, Variable(decoded),
-                                    Variable(subsequent_mask(decoded.size(1)).type_as(src.data)))
-            out = self.model.generator(out)
-            prob = F.softmax(out[:,-1,:], dim=-1)
-            _, next_word = torch.max(prob, dim=1)
-            next_word += 1
-            next_word = next_word.unsqueeze(1)
-            decoded = torch.cat([decoded, next_word], dim=1)
-
-        decoded = decoded[:,1:]
-        if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
-        return decoded
-
 class EncoderDecoder(nn.Module):
     """
     A standard Encoder-Decoder architecture
@@ -456,10 +570,10 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem, mu, logvar, predicted_mask = self.encode(src, src_mask)
-        x = self.decode(mem, predicted_mask, tgt, tgt_mask)
+        mem, mu, logvar = self.encode(src, src_mask)
+        x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, [mu, logvar, predicted_mask, src_mask]
+        return x, mu, logvar
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -484,8 +598,6 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
-        self.learn_mask1 = nn.Linear(d_latent, d_latent*2)
-        self.learn_mask2 = nn.Linear(d_latent*2, layer.src_len+1)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -508,9 +620,7 @@ class VAEEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar, self.eps_scale)
-        predicted_mask = F.relu(self.learn_mask1(mu))
-        predicted_mask = F.relu(self.learn_mask2(predicted_mask).unsqueeze(1))
-        return mem, mu, logvar, predicted_mask
+        return mem, mu, logvar
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"

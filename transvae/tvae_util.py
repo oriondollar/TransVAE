@@ -59,6 +59,19 @@ class ListModule(nn.Module):
     def __len__(self):
         return len(self._modules)
 
+class KLAnnealer:
+    def __init__(self, kl_low, kl_high, n_epochs, start_epoch):
+        self.kl_low = kl_low
+        self.kl_high = kl_high
+        self.n_epochs = n_epochs
+        self.start_epoch = start_epoch
+
+        self.kl = (self.kl_high - self.kl_low) / (self.n_epochs - self.start_epoch)
+
+    def __call__(self, epoch):
+        k = (epoch - self.start_epoch) if epoch >= self.start_epoch else 0
+        return self.kl_low + k * self.kl
+
 
 ####### PREPROCESSING HELPERS ##########
 
@@ -105,7 +118,7 @@ def get_char_weights(train_smiles, params, freq_penalty=0.5):
 def decode_smiles(encoded_tensors, org_dict):
     smiles = []
     for i in range(encoded_tensors.shape[0]):
-        encoded_tensor = encoded_tensors.numpy()[i,:] - 1
+        encoded_tensor = encoded_tensors.cpu().numpy()[i,:] - 1
         smile = ''
         for i in range(encoded_tensor.shape[0]):
             idx = encoded_tensor[i]
@@ -140,9 +153,6 @@ def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
     for i in range(position_accs.shape[1]):
         position_acc.append(position_accs[0,i] / position_accs[1,i])
     return smile_acc, token_acc, position_acc
-
-
-
 
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
     mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
