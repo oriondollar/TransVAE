@@ -23,7 +23,7 @@ class LatentVAE(VAEShell):
     approximated but does not match the correct probability distribution.
     (https://arxiv.org/pdf/1903.05789.pdf)
     """
-    def __init__(self, params, name=None, N=3, d_model=1024, d_latent=128):
+    def __init__(self, params, name=None, N=3, d_model=2048, d_latent=128):
         super().__init__(params, name)
         """
         Arguments:
@@ -127,7 +127,6 @@ class ZDecoder(nn.Module):
         self.linear_layers = ListModule(*linear_layers)
 
     def forward(self, u):
-        z_out = u.clone()
         for linear_layer in self.linear_layers:
-            z_out = F.relu(linear_layer(z_out))
-        return z_out
+            u = F.relu(linear_layer(u))
+        return u
