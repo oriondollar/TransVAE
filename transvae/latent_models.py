@@ -37,7 +37,7 @@ class LatentVAE(VAEShell):
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-4
+            self.params['ADAM_LR'] = 1e-4
 
         ### Store
         self.model_type = 'stage2'
