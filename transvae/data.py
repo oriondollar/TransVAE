@@ -7,7 +7,7 @@ from torch.autograd import Variable
 
 from tvae_util import *
 
-def data_gen(data, char_dict):
+def vae_data_gen(data, char_dict):
     smiles = data[:,0]
     scores = torch.tensor(data[:,1].astype('float32'))
     del data
@@ -19,6 +19,11 @@ def data_gen(data, char_dict):
         encoded_data[j,:] = torch.tensor(encoded_smi)
     data = torch.tensor(np.concatenate([encoded_data, scores.reshape(-1,1)], axis=1))
     return data
+
+def stage2_data_gen(data, char_dict):
+    scores = torch.zeros((data.shape[0], 1))
+    data_out = torch.cat([torch.tensor(data), scores], axis=1)
+    return data_out
 
 def make_std_mask(tgt, pad):
     tgt_mask = (tgt != pad).unsqueeze(-2)

@@ -12,8 +12,6 @@ from torch.autograd import Variable
 
 from tvae_util import *
 from opt import NoamOpt, AdamOpt
-from data import data_gen
-from loss import ce_loss, vae_ce_loss
 from trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, Embeddings, LayerNorm
 
 # https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html

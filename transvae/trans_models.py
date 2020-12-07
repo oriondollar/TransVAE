@@ -13,8 +13,8 @@ from torch.autograd import Variable
 
 from tvae_util import *
 from opt import NoamOpt
-from data import data_gen, make_std_mask
-from loss import ce_loss, vae_ce_loss
+from data import vae_data_gen, stage2_data_gen, make_std_mask
+from loss import vae_loss, stage2_loss
 
 
 ####### MODEL SHELL ##########
@@ -31,6 +31,14 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
+        if 'STAGE' not in self.params.keys():
+            self.params['STAGE'] = 1
+        if self.params['STAGE'] == 1:
+            self.loss_func = vae_loss
+            self.data_gen = vae_data_gen
+        elif self.params['STAGE'] == 2:
+            self.loss_func = stage2_loss
+            self.data_gen = stage2_data_gen
         if 'BETA_INIT' not in self.params.keys():
             self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
@@ -135,8 +143,8 @@ class VAEShell():
             log (bool): If true, writes training metrics to log file
         """
         ### Prepare data iterators
-        train_data = data_gen(train_data, char_dict=self.params['CHAR_DICT'])
-        val_data = data_gen(val_data, char_dict=self.params['CHAR_DICT'])
+        train_data = self.data_gen(train_data, char_dict=self.params['CHAR_DICT'])
+        val_data = self.data_gen(val_data, char_dict=self.params['CHAR_DICT'])
 
         train_iter = torch.utils.data.DataLoader(train_data,
                                                  batch_size=self.params['BATCH_SIZE'],
@@ -170,7 +178,7 @@ class VAEShell():
                 already_wrote = False
             log_file = open(log_fn, 'a')
             if not already_wrote:
-                log_file.write('epoch,batch_idx,data_type,tot_loss,bce_loss,kld_loss,run_time\n')
+                log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,kld_loss,run_time\n')
             log_file.close()
 
         ### Gradient Gif
@@ -199,16 +207,20 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1]).long()
-                    tgt = Variable(batch_data[:,:-2]).long()
+                    if self.model_type != 'stage2':
+                        src = Variable(batch_data[:,:-1]).long()
+                        tgt = Variable(batch_data[:,:-2]).long()
+                    else:
+                        src = Variable(batch_data[:,:-1])
+                        tgt = Variable(batch_data[:,:-2])
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
-                                                 self.params['CHAR_WEIGHTS'],
-                                                 beta)
+                    loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
+                                                    self.params['CHAR_WEIGHTS'],
+                                                    beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -254,16 +266,20 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1]).long()
-                    tgt = Variable(batch_data[:,:-2]).long()
+                    if self.model_type != 'stage2':
+                        src = Variable(batch_data[:,:-1]).long()
+                        tgt = Variable(batch_data[:,:-2]).long()
+                    else:
+                        src = Variable(batch_data[:,:-1])
+                        tgt = Variable(batch_data[:,:-2])
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
                     x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = vae_ce_loss(src, x_out, mu, logvar,
-                                                 self.params['CHAR_WEIGHTS'],
-                                                 beta)
+                    loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
+                                                    self.params['CHAR_WEIGHTS'],
+                                                    beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -391,7 +407,7 @@ class VAEShell():
             data (np.array, required): Input array consisting of smiles and property
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
@@ -469,7 +485,7 @@ class VAEShell():
         """
         Method for calculating and saving the memory of each neural net.
         """
-        data = data_gen(data, char_dict=self.params['CHAR_DICT'])
+        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
