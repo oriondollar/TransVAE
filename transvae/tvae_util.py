@@ -13,6 +13,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+from rdkit import rdBase
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect as Morgan
+
+rdBase.DisableLog('rdApp.*')
+
 
 ######## MODEL HELPERS ##########
 
@@ -171,6 +178,85 @@ def greedy_decode(model, src, src_mask, max_len, start_symbol):
         ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
     return ys
 
+####### ADDITIONAL METRIC CALCULATIONS #########
+
+def load_gen(path):
+    smiles = pd.read_csv(path).SMILES.to_list()
+    return smiles
+
+def filter_invalid(smiles):
+    valid_smiles = []
+    for smi in smiles:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            pass
+        else:
+            try:
+                Chem.SanitizeMol(mol)
+                valid_smiles.append(smi)
+            except ValueError:
+                pass
+    return valid_smiles
+
+def calc_token_lengths(smiles):
+    lens = []
+    for smi in smiles:
+        smi = smi_tokenizer(smi)
+        lens.append(len(smi))
+    return lens
+
+def calc_MW(smiles):
+    MWs = []
+    for smi in smiles:
+        mol = Chem.MolFromSmiles(smi)
+        MWs.append(Descriptors.MolWt(mol))
+    return MWs
+
+def novelty(smiles, train_smiles):
+    set_smiles = set(smiles)
+    set_train = set(train_smiles)
+    novel_smiles = list(set_smiles - set_train)
+    return novel_smiles
+
+def fingerprints(smiles):
+    fps = np.zeros((len(smiles), 1024))
+    for i, smi in enumerate(smiles):
+        mol = Chem.MolFromSmiles(smi)
+        fp = np.asarray(Morgan(mol, 2, 1024), dtype='uint8')
+        fps[i,:] = fp
+    return fps
+
+def tanimoto_similarity(bv1, bv2):
+    mand = sum(moses_fp & train_fp)
+    mor = sum(moses_fp | train_fp)
+    return mand / mor
+
+def average_agg_tanimoto(set1, set2, batch_size=5000, p=1, agg='max',
+                         device='cpu'):
+    agg_tanimoto = np.zeros(len(set2))
+    total = np.zeros(len(set2))
+    for j in range(0, set1.shape[0], batch_size):
+        x_stock = torch.tensor(set1[j:j+batch_size]).to(device).float()
+        for i in range(0, set2.shape[0], batch_size):
+            y_gen = torch.tensor(set2[i:i+batch_size]).to(device).float()
+            y_gen = y_gen.transpose(0, 1)
+            tp = torch.mm(x_stock, y_gen)
+            jac = (tp / (x_stock.sum(1, keepdim=True) +
+                   y_gen.sum(0, keepdim=True) -tp)).cpu().numpy()
+            jac[np.isnan(jac)] = 1
+            if p!= 1:
+                jac = jac**p
+            if agg == 'max':
+                agg_tanimoto[i:i+y_gen.shape[1]] = np.maximum(
+                    agg_tanimoto[i:i+y_gen.shape[1]], jac.max(0))
+            elif agg == 'mean':
+                agg_tanimoto[i:i+y_gen.shape[1]] += jac.sum(0)
+                total[i:i+y_gen.shape[1]] += jac.shape[0]
+    if agg == 'mean':
+        agg_tanimoto /= total
+    if p != 1:
+        agg_tanimoto = (agg_tanimoto)**(1/p)
+    return np.mean(agg_tanimoto)
 
 
 ####### GRADIENT TROUBLESHOOTING #########
