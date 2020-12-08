@@ -496,6 +496,8 @@ class VAEShell():
         mems = torch.empty((data.shape[0], self.d_latent)).cpu()
         mus = torch.empty((data.shape[0], self.d_latent)).cpu()
         logvars = torch.empty((data.shape[0], self.d_latent)).cpu()
+
+        self.model.eval()
         for j, data in enumerate(data_iter):
             if log:
                 log_file = open('memory/{}_progress.txt'.format(self.name), 'a')
