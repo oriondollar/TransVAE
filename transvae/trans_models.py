@@ -494,6 +494,8 @@ class VAEShell():
         self.batch_size = self.params['BATCH_SIZE']
         self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
         mems = torch.empty((data.shape[0], self.d_latent)).cpu()
+        mus = torch.empty((data.shape[0], self.d_latent)).cpu()
+        logvars = torch.empty((data.shape[0], self.d_latent)).cpu()
         for j, data in enumerate(data_iter):
             if log:
                 log_file = open('memory/{}_progress.txt'.format(self.name), 'a')
@@ -509,20 +511,24 @@ class VAEShell():
 
                 ### Run through encoder to get memory
                 if self.model_type == 'transformer':
-                    mem, _, _ = self.model.encode(src, src_mask)
+                    mem, mu, logvar = self.model.encode(src, src_mask)
                 else:
-                    mem, _, _ = self.model.encode(src)
+                    mem, mu, logvar = self.model.encode(src)
                 start = j*self.batch_size+i*self.chunk_size
                 stop = j*self.batch_size+(i+1)*self.chunk_size
                 mems[start:stop, :] = mem.detach().cpu()
+                mus[start:stop, :] = mu.detach().cpu()
+                logvars[start:stop, :] = logvar.detach().cpu()
 
         if save:
             if save_fn == 'model_name':
                 save_fn = self.name
             save_path = os.path.join(save_dir, save_fn)
-            np.save('{}.npy'.format(save_path), mems.detach().numpy())
+            np.save('{}_mems.npy'.format(save_path), mems.detach().numpy())
+            np.save('{}_mus.npy'.format(save_path), mus.detach().numpy())
+            np.save('{}_logvars.npy'.format(save_path), logvars.detach().numpy())
         else:
-            return mems
+            return mems, mus, logvars
 
 
 
