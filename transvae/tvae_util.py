@@ -236,10 +236,12 @@ def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
                          device='cpu'):
     agg_tanimoto = np.zeros(len(set2))
     total = np.zeros(len(set2))
+    set1 = torch.tensor(set1).to(device).float()
+    set2 = torch.tensor(set2).to(device).float()
     for j in range(0, set1.shape[0], bs1):
-        x_stock = torch.tensor(set1[j:j+bs1]).to(device).float()
+        x_stock = set1[j:j+bs1]
         for i in range(0, set2.shape[0], bs2):
-            y_gen = torch.tensor(set2[i:i+bs2]).to(device).float()
+            y_gen = set2[i:i+bs2]
             y_gen = y_gen.transpose(0, 1)
             tp = torch.mm(x_stock, y_gen)
             jac = (tp / (x_stock.sum(1, keepdim=True) +
