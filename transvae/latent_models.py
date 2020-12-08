@@ -69,10 +69,14 @@ class ZEncoderDecoder(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, z, tgt=None, src_mask=None, tgt_mask=None):
-        u, mu, logvar = self.encoder(z)
+    def forward(self, input, tgt=None, src_mask=None, tgt_mask=None):
+        mu = input[:,:128]
+        logvar = input[:,128:]
+        z_in = self.encoder.reparameterize(mu, logvar)
+        u, mu, logvar = self.encoder(z_in)
         z_out = self.decoder(u)
-        return z_out, mu, logvar
+        zs = [z_out, z_in]
+        return zs, mu, logvar
 
 class ZEncoder(nn.Module):
     def __init__(self, N, d_model, d_latent):

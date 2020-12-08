@@ -16,9 +16,10 @@ def vae_loss(x, x_out, mu, logvar, weights, beta=1):
         KLD = 0.
     return BCE + KLD, BCE, KLD
 
-def stage2_loss(z, z_out, mu, logvar, weights, beta=1):
+def stage2_loss(z, zs, mu, logvar, weights, beta=1):
     "Mean-Squared Error Loss + Kiebler-Lublach Divergence"
-    MSE = F.mse_loss(z_out, z, reduction='mean')
+    z_out, z_in = zs
+    MSE = F.mse_loss(z_out, z_in, reduction='mean')
     KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
     if torch.isnan(KLD):
         KLD = 0.

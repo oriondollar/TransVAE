@@ -491,11 +491,12 @@ class VAEShell():
                                                 batch_size=self.params['BATCH_SIZE'],
                                                 shuffle=False, num_workers=0,
                                                 pin_memory=False, drop_last=True)
+        save_shape = len(data_iter)*self.params['BATCH_SIZE']
         self.batch_size = self.params['BATCH_SIZE']
         self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
-        mus = torch.empty((data.shape[0], self.d_latent)).cpu()
-        logvars = torch.empty((data.shape[0], self.d_latent)).cpu()
+        mems = torch.empty((save_shape, self.d_latent)).cpu()
+        mus = torch.empty((save_shape, self.d_latent)).cpu()
+        logvars = torch.empty((save_shape, self.d_latent)).cpu()
 
         self.model.eval()
         for j, data in enumerate(data_iter):

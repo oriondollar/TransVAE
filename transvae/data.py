@@ -21,8 +21,10 @@ def vae_data_gen(data, char_dict):
     return data
 
 def stage2_data_gen(data, char_dict):
-    scores = torch.zeros((data.shape[0], 1))
-    data_out = torch.cat([torch.tensor(data), scores], axis=1)
+    mu_data, logvar_data = data
+    scores = torch.zeros((mu_data.shape[0], 1))
+    z_data = torch.cat([torch.tensor(mu_data), torch.tensor(logvar_data)], axis=1)
+    data_out = torch.cat([torch.tensor(z_data), scores], axis=1)
     return data_out
 
 def make_std_mask(tgt, pad):
