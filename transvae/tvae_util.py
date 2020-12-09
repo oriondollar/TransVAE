@@ -232,6 +232,24 @@ def tanimoto_similarity(bv1, bv2):
     mor = sum(moses_fp | train_fp)
     return mand / mor
 
+def filter(smiles):
+    _mcf = pd.read_csv('data/mcf.csv')
+    _pains = pd.read_csv('data/wehi_pains.csv', names=['smarts', 'names'])
+    _filters = [Chem.MolFromSmarts(x) for x in
+                _mcf.append(_pains, sort=True)['smarts'].values]
+    filtered_smiles = []
+    for smi in smiles:
+        mol = Chem.MolFromSmiles(smi)
+        h_mol = Chem.AddHs(mol)
+        filtered = False
+        if any(atom.GetFormalCharge() != 0 for atom in mol.GetAtoms()):
+            filtered = True
+        if any(h_mol.HasSubstructMatch(smarts) for smarts in _filters):
+            filtered = True
+        if not filtered:
+            filtered_smiles.append(smi)
+    return filtered_smiles
+
 def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
                          device='cpu'):
     agg_tanimoto = np.zeros(len(set2))
