@@ -14,7 +14,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import vae_data_gen, stage2_data_gen, make_std_mask
-from loss import vae_loss, stage2_loss
+from loss import vae_loss, trans_vae_loss, stage2_loss
 
 
 ####### MODEL SHELL ##########
@@ -178,7 +178,7 @@ class VAEShell():
                 already_wrote = False
             log_file = open(log_fn, 'a')
             if not already_wrote:
-                log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,kld_loss,run_time\n')
+                log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,run_time\n')
             log_file.close()
 
         ### Gradient Gif
@@ -200,6 +200,7 @@ class VAEShell():
             for j, data in enumerate(train_iter):
                 avg_losses = []
                 avg_bce_losses = []
+                avg_bcemask_losses = []
                 avg_kld_losses = []
                 start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
@@ -217,10 +218,19 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
-                                                    self.params['CHAR_WEIGHTS'],
-                                                    beta)
+                    if self.model_type == 'transformer':
+                        x_out, mu, logvar, pred_len = self.model(src, tgt, src_mask, tgt_mask)
+                        true_len = src_mask.sum(dim=-1)
+                        loss, bce, bce_mask, kld = trans_vae_loss(src, x_out, mu, logvar,
+                                                                  true_len, pred_len,
+                                                                  self.params['CHAR_WEIGHTS'],
+                                                                  beta)
+                        avg_bcemask_losses.append(bce_mask.item())
+                    else:
+                        x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                        loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
+                                                        self.params['CHAR_WEIGHTS'],
+                                                        beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -239,15 +249,20 @@ class VAEShell():
                 run_time = round(stop_run_time - start_run_time, 5)
                 avg_loss = np.mean(avg_losses)
                 avg_bce = np.mean(avg_bce_losses)
+                if len(avg_bcemask_losses) == 0:
+                    avg_bcemask = 0
+                else:
+                    avg_bcemask = np.mean(avg_bcemask_losses)
                 avg_kld = np.mean(avg_kld_losses)
                 losses.append(avg_loss)
 
                 if log:
                     log_file = open(log_fn, 'a')
-                    log_file.write('{},{},{},{},{},{},{}\n'.format(self.n_epochs,
+                    log_file.write('{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'train',
                                                                 avg_loss,
                                                                 avg_bce,
+                                                                avg_bcemask,
                                                                 avg_kld,
                                                                 run_time))
                     log_file.close()
@@ -259,6 +274,7 @@ class VAEShell():
             for j, data in enumerate(val_iter):
                 avg_losses = []
                 avg_bce_losses = []
+                avg_bcemask_losses = []
                 avg_kld_losses = []
                 start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
@@ -276,10 +292,19 @@ class VAEShell():
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
-                    x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                    loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
-                                                    self.params['CHAR_WEIGHTS'],
-                                                    beta)
+                    if self.model_type == 'transformer':
+                        x_out, mu, logvar, pred_len = self.model(src, tgt, src_mask, tgt_mask)
+                        true_len = src_mask.sum(dim=-1)
+                        loss, bce, bce_mask, kld = trans_vae_loss(src, x_out, mu, logvar,
+                                                                  true_len, pred_len,
+                                                                  self.params['CHAR_WEIGHTS'],
+                                                                  beta)
+                        avg_bcemask_losses.append(bce_mask.item())
+                    else:
+                        x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
+                        loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
+                                                        self.params['CHAR_WEIGHTS'],
+                                                        beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
@@ -287,15 +312,20 @@ class VAEShell():
                 run_time = round(stop_run_time - start_run_time, 5)
                 avg_loss = np.mean(avg_losses)
                 avg_bce = np.mean(avg_bce_losses)
+                if len(avg_bcemask_losses) == 0:
+                    avg_bcemask = 0
+                else:
+                    avg_bcemask = np.mean(avg_bcemask_losses)
                 avg_kld = np.mean(avg_kld_losses)
                 losses.append(avg_loss)
 
                 if log:
                     log_file = open(log_fn, 'a')
-                    log_file.write('{},{},{},{},{},{},{}\n'.format(self.n_epochs,
+                    log_file.write('{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
                                                                 j, 'test',
                                                                 avg_loss,
                                                                 avg_bce,
+                                                                avg_bcemask,
                                                                 avg_kld,
                                                                 run_time))
                     log_file.close()
@@ -614,10 +644,10 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem, mu, logvar = self.encode(src, src_mask)
+        mem, mu, logvar, pred_len = self.encode(src, src_mask)
         x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, mu, logvar
+        return x, mu, logvar, pred_len
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -642,6 +672,8 @@ class VAEEncoder(nn.Module):
         self.conv_bottleneck = ConvBottleneck(layer.size)
         self.z_means, self.z_var = nn.Linear(576, d_latent), nn.Linear(576, d_latent)
         self.norm = LayerNorm(layer.size)
+        self.predict_len1 = nn.Linear(d_latent, d_latent*2)
+        self.predict_len2 = nn.Linear(d_latent*2, d_latent)
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
@@ -664,7 +696,9 @@ class VAEEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar, self.eps_scale)
-        return mem, mu, logvar
+            pred_len = self.predict_len1(mu)
+            pred_len = self.predict_len2(pred_len)
+        return mem, mu, logvar, pred_len
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
