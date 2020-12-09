@@ -405,8 +405,6 @@ class VAEShell():
             src_mask = torch.zeros((mem.shape[0], 1, self.src_len+1))
             mask1 = torch.ones((mem.shape[0], 1, mask_len))
             src_mask[:,:,:mask_len] = mask1
-        else:
-            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
         if self.use_gpu:
             src_mask = src_mask.cuda()
