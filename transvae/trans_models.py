@@ -401,9 +401,10 @@ class VAEShell():
         decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
         tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
         if src_mask is None and self.model_type == 'transformer':
-            # mask_len = self.model.encoder.predict_mask_length(mem)
-            # print(mask_len)
-            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
+            mask_len = self.model.encoder.predict_mask_length(mem).item()
+            src_mask = torch.zeros((mem.shape[0], 1, self.src_len+1))
+            mask1 = torch.ones((mem.shape[0], 1, mask_len))
+            src_mask[:,:,:mask_len] = mask1
         else:
             src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
@@ -686,7 +687,7 @@ class VAEEncoder(nn.Module):
         pred_len = self.predict_len1(mem)
         pred_len = self.predict_len2(pred_len)
         pred_len = F.softmax(pred_len, dim=-1)
-        pred_len = torch.topk(pred_len, 1)
+        pred_len = torch.topk(pred_len, 1)[1]
         return pred_len
 
     def reparameterize(self, mu, logvar, eps_scale=1):
