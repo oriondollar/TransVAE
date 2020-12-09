@@ -232,7 +232,7 @@ def tanimoto_similarity(bv1, bv2):
     mor = sum(moses_fp | train_fp)
     return mand / mor
 
-def filter(smiles):
+def pass_through_filters(smiles):
     _mcf = pd.read_csv('data/mcf.csv')
     _pains = pd.read_csv('data/wehi_pains.csv', names=['smarts', 'names'])
     _filters = [Chem.MolFromSmarts(x) for x in
