@@ -548,7 +548,7 @@ class VAEShell():
 
                 ### Run through encoder to get memory
                 if self.model_type == 'transformer':
-                    mem, mu, logvar = self.model.encode(src, src_mask)
+                    mem, mu, logvar, _ = self.model.encode(src, src_mask)
                 else:
                     mem, mu, logvar = self.model.encode(src)
                 start = j*self.batch_size+i*self.chunk_size
