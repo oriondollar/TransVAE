@@ -400,7 +400,11 @@ class VAEShell():
         max_len = self.tgt_len
         decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
         tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
-        if src_mask is None:
+        if src_mask is None and self.model_type == 'transformer':
+            # mask_len = self.model.encoder.predict_mask_length(mem)
+            # print(mask_len)
+            src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
+        else:
             src_mask = torch.ones(mem.shape[0],max_len+2).bool().unsqueeze(1)
 
         if self.use_gpu:
@@ -464,7 +468,7 @@ class VAEShell():
 
                 ### Run through encoder to get memory
                 if self.model_type == 'transformer':
-                    _, mem, _ = self.model.encode(src, src_mask)
+                    _, mem, _, _ = self.model.encode(src, src_mask)
                 else:
                     _, mem, _ = self.model.encode(src)
                 start = j*self.batch_size+i*self.chunk_size
@@ -677,6 +681,13 @@ class VAEEncoder(nn.Module):
 
         self.bypass_bottleneck = bypass_bottleneck
         self.eps_scale = eps_scale
+
+    def predict_mask_length(self, mem):
+        pred_len = self.predict_len1(mem)
+        pred_len = self.predict_len2(pred_len)
+        pred_len = F.softmax(pred_len, dim=-1)
+        pred_len = torch.topk(pred_len, 1)
+        return pred_len
 
     def reparameterize(self, mu, logvar, eps_scale=1):
         std = torch.exp(0.5*logvar)
