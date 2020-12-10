@@ -572,7 +572,7 @@ class VAEShell():
             np.save('{}_mus.npy'.format(save_path), mus.detach().numpy())
             np.save('{}_logvars.npy'.format(save_path), logvars.detach().numpy())
         else:
-            return mems, mus, logvars
+            return mems.detach().numpy(), mus.detach().numpy(), logvars.detach().numpy()
 
 
 
