@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from scipy.stats import entropy
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 import torch
@@ -165,6 +166,13 @@ def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
     for i in range(position_accs.shape[1]):
         position_acc.append(position_accs[0,i] / position_accs[1,i])
     return smile_acc, token_acc, position_acc
+
+def calc_entropy(sample):
+    es = []
+    for i in range(sample.shape[1]):
+        probs, bin_edges = np.histogram(sample[:,i], bins=1000, range=(-5., 5.), density=True)
+        es.append(entropy(probs))
+    return np.array(es)
 
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
     mem_key, mem_val, mu, logvar = model.encode(src, src_mask)

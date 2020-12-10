@@ -379,17 +379,23 @@ class VAEShell():
             checkpoint_path = self.loaded_from
             self.save(self.current_state, checkpoint_path, use_name=False)
 
-    def sample_from_latent(self, size, mode='dist'):
+    def sample_from_latent(self, size, mode='rand', sample_dims=None, k=5):
         """
         Quickly sample from latent dimension
         """
-        if mode == 'dist':
-            assert self.current_state['latent_distribution'] is not None, "Error: Must import latent distribution to sample with this mode"
-            means = torch.tensor(self.current_state['latent_distribution']['means']).unsqueeze(0).repeat(size, 1)
-            stds = torch.tensor(self.current_state['latent_distribution']['stddevs']).unsqueeze(0).repeat(size, 1)
-            z = torch.normal(means, stds).float()
-        elif mode == 'rand':
-            z = torch.randn(size, self.model.encoder.z_means.out_features)
+        if mode == 'rand':
+            z = torch.randn(size, self.d_latent)
+        else:
+            assert sample_dims is not None, "ERROR: Must provide sample dimensions"
+            if mode == 'top_dims':
+                z = torch.zeros((size, self.d_latent))
+                for d in sample_dims:
+                    z[:,d] = torch.randn(size)
+            elif mode == 'k_dims':
+                z = torch.zeros((size, self.d_latent))
+                d_select = np.random.choice(sample_dims, size=k, replace=False)
+                for d in d_delect:
+                    z[:,d] = torch.randn(size)
         return z
 
     def greedy_decode(self, mem, src_mask=None):
@@ -411,6 +417,7 @@ class VAEShell():
             decoded = decoded.cuda()
             tgt = tgt.cuda()
 
+        self.model.eval()
         for i in range(max_len):
             if self.model_type == 'transformer':
                 decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
@@ -491,7 +498,8 @@ class VAEShell():
         else:
             return decoded_smiles
 
-    def decode_from_mem(self, n, method='greedy', sample_mode='dist', return_str=True):
+    def decode_from_mem(self, n, method='greedy', sample_mode='rand',
+                        sample_dims=None, k=None, return_str=True):
         """
         Method for decoding sampled memory back into smiles
 
@@ -499,7 +507,7 @@ class VAEShell():
             n (int): Number of data points to sample
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
-        mem = self.sample_from_latent(n, mode=sample_mode)
+        mem = self.sample_from_latent(n, mode=sample_mode, sample_dims=sample_dims, k=k)
 
         if self.use_gpu:
             mem = mem.cuda()
