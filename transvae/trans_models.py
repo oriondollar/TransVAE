@@ -394,7 +394,7 @@ class VAEShell():
             elif mode == 'k_dims':
                 z = torch.zeros((size, self.d_latent))
                 d_select = np.random.choice(sample_dims, size=k, replace=False)
-                for d in d_delect:
+                for d in d_select:
                     z[:,d] = torch.randn(size)
         return z
 
