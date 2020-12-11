@@ -163,7 +163,7 @@ def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
     smile_acc = np.mean(smile_accs)
     token_acc = hits / (hits + misses)
     position_acc = []
-    for i in range(position_accs.shape[1]):
+    for i in range(max_len):
         position_acc.append(position_accs[0,i] / position_accs[1,i])
     return smile_acc, token_acc, position_acc
 
@@ -227,6 +227,10 @@ def novelty(smiles, train_smiles):
     novel_smiles = list(set_smiles - set_train)
     return novel_smiles
 
+def unique(smiles):
+    unique_smiles = set(smiles)
+    return list(unique_smiles)
+
 def fingerprints(smiles):
     fps = np.zeros((len(smiles), 1024))
     for i, smi in enumerate(smiles):
@@ -240,9 +244,9 @@ def tanimoto_similarity(bv1, bv2):
     mor = sum(moses_fp | train_fp)
     return mand / mor
 
-def pass_through_filters(smiles):
-    _mcf = pd.read_csv('data/mcf.csv')
-    _pains = pd.read_csv('data/wehi_pains.csv', names=['smarts', 'names'])
+def pass_through_filters(smiles, data_dir='data'):
+    _mcf = pd.read_csv('{}/mcf.csv'.format(data_dir))
+    _pains = pd.read_csv('{}/wehi_pains.csv'.format(data_dir), names=['smarts', 'names'])
     _filters = [Chem.MolFromSmarts(x) for x in
                 _mcf.append(_pains, sort=True)['smarts'].values]
     filtered_smiles = []
