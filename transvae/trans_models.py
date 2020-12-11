@@ -412,7 +412,7 @@ class VAEShell():
             for i in range(mask_lens.shape[0]):
                 mask_len = mask_lens[i].item()
                 src_mask[i,:,:mask_len] = torch.ones((1, 1, mask_len))
-        else:
+        elif self.model_type != 'transformer':
             src_mask = torch.ones((mem.shape[0], 1, self.src_len))
 
         if self.use_gpu:
