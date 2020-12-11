@@ -407,10 +407,11 @@ class VAEShell():
         decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
         tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
         if src_mask is None and self.model_type == 'transformer':
-            mask_len = self.model.encoder.predict_mask_length(mem).item()
+            mask_lens = self.model.encoder.predict_mask_length(mem)
             src_mask = torch.zeros((mem.shape[0], 1, self.src_len+1))
-            mask1 = torch.ones((mem.shape[0], 1, mask_len))
-            src_mask[:,:,:mask_len] = mask1
+            for i in range(mask_lens.shape[0]):
+                mask_len = mask_lens[i].item()
+                src_mask[i,:,:mask_len] = torch.ones((1, 1, mask_len))
         else:
             src_mask = torch.ones((mem.shape[0], 1, self.src_len))
 
