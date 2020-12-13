@@ -14,7 +14,7 @@ from torch.autograd import Variable
 from tvae_util import *
 from opt import NoamOpt
 from data import vae_data_gen, moses_data_gen, stage2_data_gen, make_std_mask
-from loss import vae_loss, moses, trans_vae_loss, stage2_loss
+from loss import vae_loss, moses_loss, trans_vae_loss, stage2_loss
 
 
 ####### MODEL SHELL ##########
