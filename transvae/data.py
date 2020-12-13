@@ -20,6 +20,22 @@ def vae_data_gen(data, char_dict):
     data = torch.tensor(np.concatenate([encoded_data, scores.reshape(-1,1)], axis=1))
     return data
 
+def moses_data_gen(data, char_dict):
+    smiles_ = data[:,0]
+    scores = torch.tensor(data[:,1].astype('float32'))
+    del data
+    smiles = []
+    for smi in smiles_:
+        smiles.append([c for c in smi])
+    del smiles_
+    encoded_data = torch.empty((len(smiles), 127))
+    for j, smi in enumerate(smiles):
+        encoded_smi = encode_smiles(smi, 126, char_dict)
+        encoded_smi = [0] + encoded_smi
+        encoded_data[j,:] = torch.tensor(encoded_smi)
+    data = torch.tensor(np.concatenate([encoded_data, scores.reshape(-1,1)], axis=1))
+    return data
+
 def stage2_data_gen(data, char_dict):
     mu_data, logvar_data = data
     scores = torch.zeros((mu_data.shape[0], 1))

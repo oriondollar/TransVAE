@@ -13,7 +13,7 @@ from torch.autograd import Variable
 
 from tvae_util import *
 from opt import NoamOpt
-from data import vae_data_gen, stage2_data_gen, make_std_mask
+from data import vae_data_gen, moses_data_gen, stage2_data_gen, make_std_mask
 from loss import vae_loss, trans_vae_loss, stage2_loss
 
 
@@ -39,6 +39,9 @@ class VAEShell():
         elif self.params['STAGE'] == 2:
             self.loss_func = stage2_loss
             self.data_gen = stage2_data_gen
+        elif self.params['STAGE'] == 0:
+            self.loss_func = vae_loss
+            self.data_gen = moses_data_gen
         if 'BETA_INIT' not in self.params.keys():
             self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
