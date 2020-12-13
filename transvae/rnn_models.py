@@ -375,8 +375,8 @@ class MosesEncoder(nn.Module):
         h = self.initH(x.shape[0])
         x = x.permute(1, 0, 2)
         x, h = self.gru(x, h)
-        h = torch.cat(h.split(1), dim=-1).squeeze(0)
-        mem = self.norm(h)
+        mem = torch.cat(h.split(1), dim=-1).squeeze(0)
+        # mem = self.norm(h)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
@@ -412,7 +412,7 @@ class MosesDecoder(nn.Module):
         mem = mem.contiguous()
         x, h = self.gru(mem, h)
         x = x.permute(1, 0, 2)
-        x = self.norm(x)
+        # x = self.norm(x)
         return x, h
 
     def initH(self, batch_size):
