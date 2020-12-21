@@ -272,7 +272,7 @@ def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
         for i in range(0, set2.shape[0], bs2):
             y_gen = set2[i:i+bs2]
             y_gen = y_gen.transpose(0, 1)
-            tp = torch.mm(x_stock, y_gen)
+            tp = torch.mm(x_stock, y_gen).cpu()
             jac = (tp / (x_stock.sum(1, keepdim=True) +
                    y_gen.sum(0, keepdim=True) -tp)).cpu().numpy()
             jac[np.isnan(jac)] = 1
@@ -288,7 +288,7 @@ def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
         agg_tanimoto /= total
     if p != 1:
         agg_tanimoto = (agg_tanimoto)**(1/p)
-    return np.mean(agg_tanimoto.cuda())
+    return np.mean(agg_tanimoto)
 
 
 ####### GRADIENT TROUBLESHOOTING #########
