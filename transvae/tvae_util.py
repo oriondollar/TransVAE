@@ -288,7 +288,7 @@ def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
         agg_tanimoto /= total
     if p != 1:
         agg_tanimoto = (agg_tanimoto)**(1/p)
-    return np.mean(agg_tanimoto)
+    return np.mean(agg_tanimoto.cuda())
 
 
 ####### GRADIENT TROUBLESHOOTING #########
