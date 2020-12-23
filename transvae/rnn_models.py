@@ -181,6 +181,9 @@ class RNNAttnEncoder(nn.Module):
         if not self.bypass_attention:
             attn_weights = F.softmax(self.attn(torch.cat((x, mem), 2)), dim=2)
             attn_applied = torch.bmm(attn_weights, mem)
+            ### WRITING WEIGHTS - DELETE
+            write_idx = len(os.listdir('attn_wts/rnnattn256'))
+            np.save('attn_wts/rnnattn256/{}.npy'.format(write_idx), attn_weights.detach().numpy())
             mem = F.relu(attn_applied)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([100.])), Variable(torch.tensor([100.]))
