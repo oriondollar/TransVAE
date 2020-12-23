@@ -567,7 +567,7 @@ class VAEShell():
                 mems[start:stop, :] = mem.detach().cpu()
                 mus[start:stop, :] = mu.detach().cpu()
                 logvars[start:stop, :] = logvar.detach().cpu()
-                attn_wts[start:stop, :, :] = attn_wts.detach().cpu()
+                attn_wts[start:stop, :, :] = attn_weights.detach().cpu()
 
         if save:
             if save_fn == 'model_name':
