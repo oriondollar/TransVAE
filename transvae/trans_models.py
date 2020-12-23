@@ -615,7 +615,7 @@ class VAEShell():
                 for i in range(len(wts[2])):
                     src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
 
-        return self_attn_wts.detach().numpy(), src_attn_wts.detach().numpy()
+        return self_attn_wts.numpy(), src_attn_wts.numpy()
 
 
 ####### Encoder, Decoder and Generator ############
@@ -748,7 +748,7 @@ class VAEEncoder(nn.Module):
         attn_wts = []
         for i, attn_layer in enumerate(self.layers):
             x, wts = attn_layer(x, mask)
-            attn_wts.append(wts)
+            attn_wts.append(wts.detach().cpu())
         mem = self.norm(x)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
@@ -805,8 +805,8 @@ class VAEDecoder(nn.Module):
         src_attn_wts = []
         for i, attn_layer in enumerate(self.layers):
             x, wts = attn_layer(x, mem, mem, src_mask, tgt_mask)
-            src_attn_wts.append(wts)
-        return self.norm(x), [attn_wts], src_attn_wts
+            src_attn_wts.append(wts.detach().cpu())
+        return self.norm(x), [attn_wts.detach().cpu()], src_attn_wts
 
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward"
