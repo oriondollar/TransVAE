@@ -541,6 +541,7 @@ class VAEShell():
         mems = torch.empty((save_shape, self.d_latent)).cpu()
         mus = torch.empty((save_shape, self.d_latent)).cpu()
         logvars = torch.empty((save_shape, self.d_latent)).cpu()
+        attn_wts = torch.empty((save_shape, 127, 127)).cpu()
 
         self.model.eval()
         for j, data in enumerate(data_iter):
@@ -560,12 +561,13 @@ class VAEShell():
                 if self.model_type == 'transformer':
                     mem, mu, logvar, _ = self.model.encode(src, src_mask)
                 else:
-                    mem, mu, logvar = self.model.encode(src)
+                    mem, mu, logvar, attn_weights = self.model.encode(src)
                 start = j*self.batch_size+i*self.chunk_size
                 stop = j*self.batch_size+(i+1)*self.chunk_size
                 mems[start:stop, :] = mem.detach().cpu()
                 mus[start:stop, :] = mu.detach().cpu()
                 logvars[start:stop, :] = logvar.detach().cpu()
+                attn_wts[start:stop, :, :] = attn_wts.detach().cpu()
 
         if save:
             if save_fn == 'model_name':
@@ -575,7 +577,7 @@ class VAEShell():
             np.save('{}_mus.npy'.format(save_path), mus.detach().numpy())
             np.save('{}_logvars.npy'.format(save_path), logvars.detach().numpy())
         else:
-            return mems.detach().numpy(), mus.detach().numpy(), logvars.detach().numpy()
+            return mems.detach().numpy(), mus.detach().numpy(), logvars.detach().numpy(), attn_wts.detach().numpy()
 
 
 

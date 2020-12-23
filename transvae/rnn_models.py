@@ -137,10 +137,10 @@ class RNNEncoderDecoder(nn.Module):
         self.generator = generator
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
-        mem, mu, logvar = self.encode(src)
+        mem, mu, logvar, attn_weights = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar
+        return x, mu, logvar, attn_weights
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
@@ -181,9 +181,6 @@ class RNNAttnEncoder(nn.Module):
         if not self.bypass_attention:
             attn_weights = F.softmax(self.attn(torch.cat((x, mem), 2)), dim=2)
             attn_applied = torch.bmm(attn_weights, mem)
-            ### WRITING WEIGHTS - DELETE
-            write_idx = len(os.listdir('attn_wts/rnnattn256'))
-            np.save('attn_wts/rnnattn256/{}.npy'.format(write_idx), attn_weights.detach().cpu().numpy())
             mem = F.relu(attn_applied)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([100.])), Variable(torch.tensor([100.]))
@@ -193,7 +190,7 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar
+        return mem, mu, logvar, attn_weights
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
