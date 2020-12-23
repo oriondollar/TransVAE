@@ -137,10 +137,10 @@ class RNNEncoderDecoder(nn.Module):
         self.generator = generator
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
-        mem, mu, logvar, attn_weights = self.encode(src)
+        mem, mu, logvar = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar, attn_weights
+        return x, mu, logvar
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
@@ -190,7 +190,7 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, attn_weights
+        return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
