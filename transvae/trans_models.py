@@ -36,7 +36,7 @@ class VAEShell():
         if 'ANNEAL_START' not in self.params.keys():
             self.params['ANNEAL_START'] = 0
         if 'LR' not in self.params.keys():
-            self.params['LR'] = 1
+            self.params['LR_SCALE'] = 1
         if 'WARMUP_STEPS' not in self.params.keys():
             self.params['WARMUP_STEPS'] = 10000
         if 'EPS_SCALE' not in self.params.keys():
@@ -583,7 +583,7 @@ class TransVAE(VAEShell):
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, self.params['LR'], self.params['WARMUP_STEPS'],
+        self.optimizer = NoamOpt(d_model, self.params['LR_SCALE'], self.params['WARMUP_STEPS'],
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
