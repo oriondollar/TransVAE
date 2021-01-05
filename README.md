@@ -8,6 +8,6 @@ This repo contains the codebase for the attention-based implementations of VAE m
 - **checkpoints**: pre-trained model files
 - **data**: token vocabularies and weights for ZINC and PubChem datasets (***note - full train and test sets available for download here)
 
-
+## Installation
 
 There are three model types - RNN, RNNAttn and Transformer.

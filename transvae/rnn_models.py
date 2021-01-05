@@ -1,6 +1,4 @@
 import os
-import shutil
-import imageio
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -17,7 +15,7 @@ from trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, 
 # https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 ########## Model Classes ############
 
-class GruaVAE(VAEShell):
+class RNNAttn(VAEShell):
     """
     RNN-based VAE class with attention.
     """
@@ -77,8 +75,47 @@ class GruaVAE(VAEShell):
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
 
+    def calc_attn(self, data):
+        """
+        Method for calculating and saving the recurrent attention weights.
+        """
+        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
 
-class GruVAE(VAEShell):
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=True)
+        save_shape = len(data_iter)*self.params['BATCH_SIZE']
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+        attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
+
+        self.model.eval()
+        for j, data in enumerate(data_iter):
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+                tgt = Variable(batch_data[:,:-2]).long()
+                tgt_mask = make_std_mask(tgt, self.pad_idx)
+
+                ### Run through encoder to get memory
+                x_out, mu, logvar, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                for i in range(len(wts[0])):
+                    self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
+                self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
+                for i in range(len(wts[2])):
+                    src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
+
+        return self_attn_wts.numpy(), src_attn_wts.numpy()
+
+
+class RNN(VAEShell):
     """
     RNN-based VAE without attention.
     """
@@ -136,11 +173,14 @@ class RNNEncoderDecoder(nn.Module):
         self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
-        mem, mu, logvar = self.encode(src)
+    def forward(self, src, tgt, src_mask=None, tgt_mask=None, return_attn=False):
+        mem, mu, logvar, attn_wts = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar
+        if return_attn:
+            return x, mu, logvar, attn_wts
+        else:
+            return x, mu, logvar
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
@@ -190,7 +230,7 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar
+        return mem, mu, logvar, attn_weights
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
@@ -264,7 +304,7 @@ class RNNEncoder(nn.Module):
         else:
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar
+        return mem, mu, logvar, None
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
@@ -302,117 +342,6 @@ class RNNDecoder(nn.Module):
         x, h = self.gru(mem, h)
         x = x.permute(1, 0, 2)
         x = self.norm(x)
-        return x, h
-
-    def initH(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
-
-
-########## MOSES VAE Architecture ############
-
-class MosesVAE(VAEShell):
-    """
-    RNN-based VAE without attention.
-    """
-    def __init__(self, params, name=None, N=3, d_model=512, d_emb=30,
-                 d_latent=128, dropout=0.2, bypass_bottleneck=False):
-        super().__init__(params, name)
-
-        ### Set learning rate for Adam optimizer
-        if 'ADAM_LR' not in self.params.keys():
-            self.params['ADAM_LR'] = 3e-4
-
-        ### Store architecture params
-        self.model_type = 'moses'
-        self.N = N
-        self.d_model = d_model
-        self.d_emb = d_emb
-        self.d_latent = d_latent
-        self.dropout = dropout
-        self.bypass_bottleneck = bypass_bottleneck
-
-        ### Build model architecture
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = MosesEncoder(d_emb, d_model // 2, d_latent, 1, dropout, bypass_bottleneck, self.device)
-        decoder = MosesDecoder(d_emb, d_model, d_latent, N, dropout, self.tgt_len, bypass_bottleneck, self.device)
-        generator = Generator(d_model, self.vocab_size)
-        src_embed = Embeddings(d_emb, self.vocab_size)
-        tgt_embed = Embeddings(d_emb, self.vocab_size)
-        self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, self.params)
-        for p in self.model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-        self.use_gpu = torch.cuda.is_available()
-        if self.use_gpu:
-            self.model.cuda()
-            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
-
-        ### Initiate optimizer
-        self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
-                                  self.params['ADAM_LR'], optim.Adam)
-
-
-class MosesEncoder(nn.Module):
-    def __init__(self, d_emb, size, d_latent, N, dropout, bypass_bottleneck, device):
-        super().__init__()
-        self.d_emb = d_emb
-        self.size = size
-        self.n_layers = N
-        self.bypass_bottleneck = bypass_bottleneck
-        self.device = device
-
-        self.gru = nn.GRU(self.d_emb, self.size, num_layers=N, bidirectional=True)
-        self.z_means = nn.Linear(size*2, d_latent)
-        self.z_var = nn.Linear(size*2, d_latent)
-        self.norm = LayerNorm(size*2)
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
-        return mu + eps*std
-
-    def forward(self, x):
-        h = self.initH(x.shape[0])
-        x = x.permute(1, 0, 2)
-        x, h = self.gru(x, h)
-        mem = torch.cat(h.split(1), dim=-1).squeeze(0)
-        # mem = self.norm(h)
-        if self.bypass_bottleneck:
-            mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
-        else:
-            mu, logvar = self.z_means(mem), self.z_var(mem)
-            mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar
-
-    def initH(self, batch_size):
-        return torch.zeros(self.n_layers*2, batch_size, self.size, device=self.device)
-
-class MosesDecoder(nn.Module):
-    def __init__(self, d_emb, size, d_latent, N, dropout, tgt_length, bypass_bottleneck, device):
-        super().__init__()
-        self.d_emb = d_emb
-        self.size = size
-        self.n_layers = N
-        self.max_length = tgt_length+1
-        self.bypass_bottleneck = bypass_bottleneck
-        self.device = device
-
-        self.gru = nn.GRU(d_emb + d_latent, self.size, num_layers=N, dropout=dropout)
-        self.l2h = nn.Linear(d_latent, self.size)
-        self.dropout = nn.Dropout(dropout)
-        self.norm = LayerNorm(size)
-
-    def forward(self, tgt, mem):
-        embedded = self.dropout(tgt)
-        h = self.l2h(mem)
-        h = h.unsqueeze(0).repeat(self.n_layers, 1, 1)
-        mem = mem.unsqueeze(1).repeat(1, self.max_length, 1)
-        mem = torch.cat([embedded, mem], dim=-1)
-        mem = mem.permute(1, 0, 2)
-        mem = mem.contiguous()
-        x, h = self.gru(mem, h)
-        x = x.permute(1, 0, 2)
-        # x = self.norm(x)
         return x, h
 
     def initH(self, batch_size):

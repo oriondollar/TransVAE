@@ -1,8 +1,6 @@
 import os
 import json
 from time import perf_counter
-import shutil
-import imageio
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -13,8 +11,8 @@ from torch.autograd import Variable
 
 from tvae_util import *
 from opt import NoamOpt
-from data import vae_data_gen, stage2_data_gen, make_std_mask
-from loss import vae_loss, trans_vae_loss, stage2_loss
+from data import vae_data_gen, make_std_mask
+from loss import vae_loss, trans_vae_loss
 
 
 ####### MODEL SHELL ##########
@@ -31,14 +29,6 @@ class VAEShell():
             self.params['BATCH_SIZE'] = 500
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
-        if 'STAGE' not in self.params.keys():
-            self.params['STAGE'] = 1
-        if self.params['STAGE'] == 1:
-            self.loss_func = vae_loss
-            self.data_gen = vae_data_gen
-        elif self.params['STAGE'] == 2:
-            self.loss_func = stage2_loss
-            self.data_gen = stage2_data_gen
         if 'BETA_INIT' not in self.params.keys():
             self.params['BETA_INIT'] = 0
         if 'BETA' not in self.params.keys():
@@ -59,6 +49,8 @@ class VAEShell():
             print("WARNING: MUST PROVIDE VOCABULARY KEY PRIOR TO TRAINING")
         self.vocab_size = len(self.params['CHAR_DICT'].keys())
         self.pad_idx = self.params['CHAR_DICT']['_']
+        self.loss_func = vae_loss
+        self.data_gen = vae_data_gen
 
         ### Sequence length hard-coded into model
         self.src_len = 126
@@ -128,7 +120,7 @@ class VAEShell():
         self.model.load_state_dict(self.current_state['model_state_dict'])
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
-    def train(self, train_data, val_data, epochs=100, save=True, save_freq=None, log=True, make_grad_gif=False):
+    def train(self, train_data, val_data, epochs=100, save=True, save_freq=None, log=True, log_dir='trials'):
         """
         Train model and validate
 
@@ -165,11 +157,11 @@ class VAEShell():
 
         ### Setup log file
         if log:
-            os.makedirs('trials', exist_ok=True)
+            os.makedirs(log_dir, exist_ok=True)
             if self.name is not None:
-                log_fn = 'trials/log{}.txt'.format('_'+self.name)
+                log_fn = '{}/log{}.txt'.format(log_dir, '_'+self.name)
             else:
-                log_fn = 'trials/log.txt'
+                log_fn = '{}/log.txt'.format(log_dir)
             try:
                 f = open(log_fn, 'r')
                 f.close()
@@ -180,12 +172,6 @@ class VAEShell():
             if not already_wrote:
                 log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,run_time\n')
             log_file.close()
-
-        ### Gradient Gif
-        if make_grad_gif:
-            os.makedirs('gif', exist_ok=True)
-            images = []
-            frame = 0
 
         ### Initialize Annealer
         kl_annealer = KLAnnealer(self.params['BETA_INIT'], self.params['BETA'],
@@ -208,12 +194,8 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    if self.model_type != 'stage2':
-                        src = Variable(batch_data[:,:-1]).long()
-                        tgt = Variable(batch_data[:,:-2]).long()
-                    else:
-                        src = Variable(batch_data[:,:-1])
-                        tgt = Variable(batch_data[:,:-2])
+                    src = Variable(batch_data[:,:-1]).long()
+                    tgt = Variable(batch_data[:,:-2]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
@@ -235,14 +217,6 @@ class VAEShell():
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
                     loss.backward()
-                if make_grad_gif and j % 100 == 0:
-                    plt = uu.plot_grad_flow(self.model.named_parameters())
-                    plt.title('Epoch {}  Frame {}'.format(epoch+1, frame))
-                    fn = 'gif/{}.png'.format(frame)
-                    plt.savefig(fn)
-                    plt.close()
-                    images.append(imageio.imread(fn))
-                    frame += 1
                 self.optimizer.step()
                 self.model.zero_grad()
                 stop_run_time = perf_counter()
@@ -282,12 +256,8 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    if self.model_type != 'stage2':
-                        src = Variable(batch_data[:,:-1]).long()
-                        tgt = Variable(batch_data[:,:-2]).long()
-                    else:
-                        src = Variable(batch_data[:,:-1])
-                        tgt = Variable(batch_data[:,:-2])
+                    src = Variable(batch_data[:,:-1]).long()
+                    tgt = Variable(batch_data[:,:-2]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
@@ -352,34 +322,8 @@ class VAEShell():
                 if save:
                     self.save(self.current_state, epoch_str)
 
-            if save:
-                self.save(self.current_state, 'latest')
-
-        if make_grad_gif:
-            imageio.mimsave('grads.gif', images)
-            shutil.rmtree('gif')
-
     ### Sampling and Decoding Functions
-    def import_latent_distribution(self, path, set='train', override=False):
-        assert self.loaded_from is not None, "Checkpoint must be loaded to store latent distribution"
-        write_latent = True
-        if self.current_state['latent_distribution'] is not None:
-            if not override:
-                print('ERROR: Latent distribution already loaded. Set override=True to load anyway')
-                write_latent = False
-            else:
-                print('WARNING: Latent distribution already loaded. Overwriting...')
-        if write_latent:
-            with open(path, 'r') as f:
-                data = json.load(f)
-            latent_means = data['latent_distribution'][set][0]
-            latent_stds = data['latent_distribution'][set][1]
-            self.current_state['latent_distribution'] = {'means': np.array(latent_means),
-                                                         'stddevs': np.array(latent_stds)}
-            checkpoint_path = self.loaded_from
-            self.save(self.current_state, checkpoint_path, use_name=False)
-
-    def sample_from_latent(self, size, mode='rand', sample_dims=None, k=5):
+    def sample_from_memory(self, size, mode='rand', sample_dims=None, k=5):
         """
         Quickly sample from latent dimension
         """
@@ -441,7 +385,7 @@ class VAEShell():
         decoded = tgt[:,1:]
         return decoded
 
-    def decode_from_src(self, data, method='greedy', log=True, return_mems=True, return_str=True):
+    def reconstruct(self, data, method='greedy', log=True, return_mems=True, return_str=True):
         """
         Method for encoding input smiles into memory and decoding back
         into smiles
@@ -501,7 +445,7 @@ class VAEShell():
         else:
             return decoded_smiles
 
-    def decode_from_mem(self, n, method='greedy', sample_mode='rand',
+    def sample(self, n, method='greedy', sample_mode='rand',
                         sample_dims=None, k=None, return_str=True):
         """
         Method for decoding sampled memory back into smiles
@@ -510,7 +454,7 @@ class VAEShell():
             n (int): Number of data points to sample
             method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
         """
-        mem = self.sample_from_latent(n, mode=sample_mode, sample_dims=sample_dims, k=k)
+        mem = self.sample_from_memory(n, mode=sample_mode, sample_dims=sample_dims, k=k)
 
         if self.use_gpu:
             mem = mem.cuda()
@@ -576,46 +520,6 @@ class VAEShell():
             np.save('{}_logvars.npy'.format(save_path), logvars.detach().numpy())
         else:
             return mems.detach().numpy(), mus.detach().numpy(), logvars.detach().numpy()
-
-    def calc_attn(self, data):
-        """
-        Method for calculating and saving the memory of each neural net.
-        """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
-
-        data_iter = torch.utils.data.DataLoader(data,
-                                                batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=True)
-        save_shape = len(data_iter)*self.params['BATCH_SIZE']
-        self.batch_size = self.params['BATCH_SIZE']
-        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-        self_attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
-        src_attn_wts = torch.empty((save_shape, 3, 4, 126, 127)).cpu()
-
-        self.model.eval()
-        for j, data in enumerate(data_iter):
-            for i in range(self.params['BATCH_CHUNKS']):
-                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-                if self.use_gpu:
-                    batch_data = batch_data.cuda()
-
-                src = Variable(batch_data[:,:-1]).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-2]).long()
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-
-                ### Run through encoder to get memory
-                x_out, mu, logvar, pred_len, wts = self.model(src, tgt, src_mask, tgt_mask)
-                start = j*self.batch_size+i*self.chunk_size
-                stop = j*self.batch_size+(i+1)*self.chunk_size
-                for i in range(len(wts[0])):
-                    self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
-                self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
-                for i in range(len(wts[2])):
-                    src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
-
-        return self_attn_wts.numpy(), src_attn_wts.numpy()
 
 
 ####### Encoder, Decoder and Generator ############
@@ -683,6 +587,46 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
+    def calc_attn(self, data):
+        """
+        Method for calculating and saving the transformer attention weights.
+        """
+        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+
+        data_iter = torch.utils.data.DataLoader(data,
+                                                batch_size=self.params['BATCH_SIZE'],
+                                                shuffle=False, num_workers=0,
+                                                pin_memory=False, drop_last=True)
+        save_shape = len(data_iter)*self.params['BATCH_SIZE']
+        self.batch_size = self.params['BATCH_SIZE']
+        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+        self_attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
+        src_attn_wts = torch.empty((save_shape, 3, 4, 126, 127)).cpu()
+
+        self.model.eval()
+        for j, data in enumerate(data_iter):
+            for i in range(self.params['BATCH_CHUNKS']):
+                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                if self.use_gpu:
+                    batch_data = batch_data.cuda()
+
+                src = Variable(batch_data[:,:-1]).long()
+                src_mask = (src != self.pad_idx).unsqueeze(-2)
+                tgt = Variable(batch_data[:,:-2]).long()
+                tgt_mask = make_std_mask(tgt, self.pad_idx)
+
+                ### Run through encoder to get memory
+                x_out, mu, logvar, pred_len, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
+                start = j*self.batch_size+i*self.chunk_size
+                stop = j*self.batch_size+(i+1)*self.chunk_size
+                for i in range(len(wts[0])):
+                    self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
+                self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
+                for i in range(len(wts[2])):
+                    src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
+
+        return self_attn_wts.numpy(), src_attn_wts.numpy()
+
 class EncoderDecoder(nn.Module):
     """
     A standard Encoder-Decoder architecture
@@ -695,12 +639,15 @@ class EncoderDecoder(nn.Module):
         self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    def forward(self, src, tgt, src_mask, tgt_mask, return_attn=False):
         "Take in and process masked src and tgt sequences"
         mem, mu, logvar, pred_len, self_attn_wts = self.encode(src, src_mask)
         x, mem_attn_wts, src_attn_wts = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, mu, logvar, pred_len, [self_attn_wts, mem_attn_wts, src_attn_wts]
+        if return_attn:
+            return x, mu, logvar, pred_len, [self_attn_wts, mem_attn_wts, src_attn_wts]
+        else:
+            return x, mu, logvar, pred_len
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -921,7 +868,8 @@ class DeconvBottleneck(nn.Module):
             if i == 2:
                 out_d = size
                 stride = 1
-            deconv_layers.append(nn.Sequential(nn.ConvTranspose1d(in_d, out_d, kernel_size, stride=stride, padding=2)))
+            deconv_layers.append(nn.Sequential(nn.ConvTranspose1d(in_d, out_d, kernel_size,
+                                                                  stride=stride, padding=2)))
             in_d = out_d
         self.deconv_layers = ListModule(*deconv_layers)
 
@@ -998,52 +946,3 @@ class SublayerConnection(nn.Module):
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size"
         return x + self.dropout(sublayer(self.norm(x)))
-
-
-################ STORAGE #####################
-
-class Transformer():
-    """
-    Standard transfomer class
-    """
-    def __init__(self, src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, d_ll=256,
-                 h=8, dropout=0.1):
-        c = copy.deepcopy
-        attn = MultiHeadedAttention(h, d_model)
-        ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-        position = PositionalEncoding(d_model, dropout)
-        encoder = Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N)
-        decoder = Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N)
-        src_embed = nn.Sequential(Embeddings(d_model, src_vocab), c(position))
-        tgt_embed = nn.Sequential(Embeddings(d_model, tgt_vocab), c(position))
-        generator = Generator(d_model, tgt_vocab)
-        self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator)
-
-        for p in self.model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-class Encoder(nn.Module):
-    "Core encoder is a stack of N layers"
-    def __init__(self, layer, N):
-        super(Encoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-
-    def forward(self, x, mask):
-        "Pass the input (and mask) through each layer in turn"
-        for i, layer in enumerate(self.layers):
-            x = layer(x, mask)
-        return self.norm(x)
-
-class Decoder(nn.Module):
-    "Generic N layer decoder with masking"
-    def __init__(self, layer, N):
-        super(Decoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-
-    def forward(self, x, memory, src_mask, tgt_mask):
-        for i, layer in enumerate(self.layers):
-            x = layer(x, memory, src_mask, tgt_mask)
-        return self.norm(x)
