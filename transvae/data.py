@@ -9,7 +9,6 @@ from tvae_util import *
 
 def vae_data_gen(data, char_dict):
     smiles = data[:,0]
-    scores = torch.tensor(data[:,1].astype('float32'))
     del data
     smiles = [smi_tokenizer(x) for x in smiles]
     encoded_data = torch.empty((len(smiles), 127))
@@ -17,11 +16,9 @@ def vae_data_gen(data, char_dict):
         encoded_smi = encode_smiles(smi, 126, char_dict)
         encoded_smi = [0] + encoded_smi
         encoded_data[j,:] = torch.tensor(encoded_smi)
-    data = torch.tensor(np.concatenate([encoded_data, scores.reshape(-1,1)], axis=1))
-    return data
+    return encoded_data
 
 def make_std_mask(tgt, pad):
     tgt_mask = (tgt != pad).unsqueeze(-2)
     tgt_mask = tgt_mask & Variable(subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
     return tgt_mask
-    

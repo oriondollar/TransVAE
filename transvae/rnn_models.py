@@ -97,9 +97,9 @@ class RNNAttn(VAEShell):
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
 
-                src = Variable(batch_data[:,:-1]).long()
+                src = Variable(batch_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-2]).long()
+                tgt = Variable(batch_data[:,:-1]).long()
                 tgt_mask = make_std_mask(tgt, self.pad_idx)
 
                 ### Run through encoder to get memory

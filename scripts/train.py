@@ -1,8 +1,7 @@
 import os
 import sys
-USER_NAME = os.environ['USER']
-sys.path.append('/Users/{}/Dropbox/prg/my_repos/TransVAE/transvae'.format(USER_NAME))
-sys.path.append('/Users/{}/Dropbox/prg/my_repos/TransVAE'.format(USER_NAME))
+sys.path.append('{}/transvae'.format(os.getcwd()))
+sys.path.append(os.getcwd())
 import pickle
 import pkg_resources
 

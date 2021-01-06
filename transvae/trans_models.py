@@ -194,11 +194,10 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1]).long()
-                    tgt = Variable(batch_data[:,:-2]).long()
+                    src = Variable(batch_data).long()
+                    tgt = Variable(batch_data[:,:-1]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
-                    scores = Variable(data[:,-1])
 
                     if self.model_type == 'transformer':
                         x_out, mu, logvar, pred_len = self.model(src, tgt, src_mask, tgt_mask)
@@ -256,8 +255,8 @@ class VAEShell():
                     if self.use_gpu:
                         batch_data = batch_data.cuda()
 
-                    src = Variable(batch_data[:,:-1]).long()
-                    tgt = Variable(batch_data[:,:-2]).long()
+                    src = Variable(batch_data).long()
+                    tgt = Variable(batch_data[:,:-1]).long()
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
@@ -416,7 +415,7 @@ class VAEShell():
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
 
-                src = Variable(batch_data[:,:-1]).long()
+                src = Variable(batch_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory
@@ -497,7 +496,7 @@ class VAEShell():
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
 
-                src = Variable(batch_data[:,:-1]).long()
+                src = Variable(batch_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory
@@ -610,9 +609,9 @@ class TransVAE(VAEShell):
                 if self.use_gpu:
                     batch_data = batch_data.cuda()
 
-                src = Variable(batch_data[:,:-1]).long()
+                src = Variable(batch_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-2]).long()
+                tgt = Variable(batch_data[:,:-1]).long()
                 tgt_mask = make_std_mask(tgt, self.pad_idx)
 
                 ### Run through encoder to get memory
