@@ -586,45 +586,45 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    def calc_attn(self, data):
-        """
-        Method for calculating and saving the transformer attention weights.
-        """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
-
-        data_iter = torch.utils.data.DataLoader(data,
-                                                batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=True)
-        save_shape = len(data_iter)*self.params['BATCH_SIZE']
-        self.batch_size = self.params['BATCH_SIZE']
-        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-        self_attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
-        src_attn_wts = torch.empty((save_shape, 3, 4, 126, 127)).cpu()
-
-        self.model.eval()
-        for j, data in enumerate(data_iter):
-            for i in range(self.params['BATCH_CHUNKS']):
-                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-                if self.use_gpu:
-                    batch_data = batch_data.cuda()
-
-                src = Variable(batch_data).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-1]).long()
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-
-                ### Run through encoder to get memory
-                x_out, mu, logvar, pred_len, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
-                start = j*self.batch_size+i*self.chunk_size
-                stop = j*self.batch_size+(i+1)*self.chunk_size
-                for i in range(len(wts[0])):
-                    self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
-                self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
-                for i in range(len(wts[2])):
-                    src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
-
-        return self_attn_wts.numpy(), src_attn_wts.numpy()
+    # def calc_attn(self, data):
+    #     """
+    #     Method for calculating and saving the transformer attention weights.
+    #     """
+    #     data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+    #
+    #     data_iter = torch.utils.data.DataLoader(data,
+    #                                             batch_size=self.params['BATCH_SIZE'],
+    #                                             shuffle=False, num_workers=0,
+    #                                             pin_memory=False, drop_last=True)
+    #     save_shape = len(data_iter)*self.params['BATCH_SIZE']
+    #     self.batch_size = self.params['BATCH_SIZE']
+    #     self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+    #     self_attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
+    #     src_attn_wts = torch.empty((save_shape, 3, 4, 126, 127)).cpu()
+    #
+    #     self.model.eval()
+    #     for j, data in enumerate(data_iter):
+    #         for i in range(self.params['BATCH_CHUNKS']):
+    #             batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+    #             if self.use_gpu:
+    #                 batch_data = batch_data.cuda()
+    #
+    #             src = Variable(batch_data).long()
+    #             src_mask = (src != self.pad_idx).unsqueeze(-2)
+    #             tgt = Variable(batch_data[:,:-1]).long()
+    #             tgt_mask = make_std_mask(tgt, self.pad_idx)
+    #
+    #             ### Run through encoder to get memory
+    #             x_out, mu, logvar, pred_len, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
+    #             start = j*self.batch_size+i*self.chunk_size
+    #             stop = j*self.batch_size+(i+1)*self.chunk_size
+    #             for i in range(len(wts[0])):
+    #                 self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
+    #             self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
+    #             for i in range(len(wts[2])):
+    #                 src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
+    #
+    #     return self_attn_wts.numpy(), src_attn_wts.numpy()
 
 class EncoderDecoder(nn.Module):
     """
@@ -638,15 +638,12 @@ class EncoderDecoder(nn.Module):
         self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, tgt, src_mask, tgt_mask, return_attn=False):
+    def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
-        mem, mu, logvar, pred_len, self_attn_wts = self.encode(src, src_mask)
-        x, mem_attn_wts, src_attn_wts = self.decode(mem, src_mask, tgt, tgt_mask)
+        mem, mu, logvar, pred_len = self.encode(src, src_mask)
+        x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        if return_attn:
-            return x, mu, logvar, pred_len, [self_attn_wts, mem_attn_wts, src_attn_wts]
-        else:
-            return x, mu, logvar, pred_len
+        return x, mu, logvar, pred_len
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
@@ -691,10 +688,8 @@ class VAEEncoder(nn.Module):
 
     def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn"
-        attn_wts = []
         for i, attn_layer in enumerate(self.layers):
-            x, wts = attn_layer(x, mask)
-            attn_wts.append(wts.detach().cpu())
+            x = attn_layer(x, mask)
         mem = self.norm(x)
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
@@ -706,7 +701,7 @@ class VAEEncoder(nn.Module):
             mem = self.reparameterize(mu, logvar, self.eps_scale)
             pred_len = self.predict_len1(mu)
             pred_len = self.predict_len2(pred_len)
-        return mem, mu, logvar, pred_len, attn_wts
+        return mem, mu, logvar, pred_len
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -719,9 +714,8 @@ class EncoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(self.size, dropout), 2)
 
     def forward(self, x, mask):
-        attn_wts = self.self_attn(x, x, x, mask, return_attn=True)
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return self.sublayer[1](x, self.feed_forward), attn_wts
+        return self.sublayer[1](x, self.feed_forward)
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
@@ -746,13 +740,11 @@ class VAEDecoder(nn.Module):
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
         for final_encode in self.final_encodes:
-            mem, attn_wts = final_encode(mem, src_mask)
+            mem = final_encode(mem, src_mask)
         mem = self.norm(mem)
-        src_attn_wts = []
         for i, attn_layer in enumerate(self.layers):
-            x, wts = attn_layer(x, mem, mem, src_mask, tgt_mask)
-            src_attn_wts.append(wts.detach().cpu())
-        return self.norm(x), [attn_wts.detach().cpu()], src_attn_wts
+            x = attn_layer(x, mem, mem, src_mask, tgt_mask)
+        return self.norm(x)
 
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward"
@@ -768,10 +760,9 @@ class DecoderLayer(nn.Module):
     def forward(self, x, memory_key, memory_val, src_mask, tgt_mask):
         m_key = memory_key
         m_val = memory_val
-        attn_wts = self.src_attn(x, m_key, m_val, src_mask, return_attn=True)
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m_key, m_val, src_mask))
-        return self.sublayer[2](x, self.feed_forward), attn_wts
+        return self.sublayer[2](x, self.feed_forward)
 
 ############## Attention and FeedForward ################
 

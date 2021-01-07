@@ -75,44 +75,44 @@ class RNNAttn(VAEShell):
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
 
-    def calc_attn(self, data):
-        """
-        Method for calculating and saving the recurrent attention weights.
-        """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
-
-        data_iter = torch.utils.data.DataLoader(data,
-                                                batch_size=self.params['BATCH_SIZE'],
-                                                shuffle=False, num_workers=0,
-                                                pin_memory=False, drop_last=True)
-        save_shape = len(data_iter)*self.params['BATCH_SIZE']
-        self.batch_size = self.params['BATCH_SIZE']
-        self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-        attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
-
-        self.model.eval()
-        for j, data in enumerate(data_iter):
-            for i in range(self.params['BATCH_CHUNKS']):
-                batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-                if self.use_gpu:
-                    batch_data = batch_data.cuda()
-
-                src = Variable(batch_data).long()
-                src_mask = (src != self.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-1]).long()
-                tgt_mask = make_std_mask(tgt, self.pad_idx)
-
-                ### Run through encoder to get memory
-                x_out, mu, logvar, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
-                start = j*self.batch_size+i*self.chunk_size
-                stop = j*self.batch_size+(i+1)*self.chunk_size
-                for i in range(len(wts[0])):
-                    self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
-                self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
-                for i in range(len(wts[2])):
-                    src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
-
-        return self_attn_wts.numpy(), src_attn_wts.numpy()
+    # def calc_attn(self, data):
+    #     """
+    #     Method for calculating and saving the recurrent attention weights.
+    #     """
+    #     data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+    #
+    #     data_iter = torch.utils.data.DataLoader(data,
+    #                                             batch_size=self.params['BATCH_SIZE'],
+    #                                             shuffle=False, num_workers=0,
+    #                                             pin_memory=False, drop_last=True)
+    #     save_shape = len(data_iter)*self.params['BATCH_SIZE']
+    #     self.batch_size = self.params['BATCH_SIZE']
+    #     self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
+    #     attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
+    #
+    #     self.model.eval()
+    #     for j, data in enumerate(data_iter):
+    #         for i in range(self.params['BATCH_CHUNKS']):
+    #             batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+    #             if self.use_gpu:
+    #                 batch_data = batch_data.cuda()
+    #
+    #             src = Variable(batch_data).long()
+    #             src_mask = (src != self.pad_idx).unsqueeze(-2)
+    #             tgt = Variable(batch_data[:,:-1]).long()
+    #             tgt_mask = make_std_mask(tgt, self.pad_idx)
+    #
+    #             ### Run through encoder to get memory
+    #             x_out, mu, logvar, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
+    #             start = j*self.batch_size+i*self.chunk_size
+    #             stop = j*self.batch_size+(i+1)*self.chunk_size
+    #             for i in range(len(wts[0])):
+    #                 self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
+    #             self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
+    #             for i in range(len(wts[2])):
+    #                 src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
+    #
+    #     return self_attn_wts.numpy(), src_attn_wts.numpy()
 
 
 class RNN(VAEShell):
@@ -173,14 +173,11 @@ class RNNEncoderDecoder(nn.Module):
         self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, tgt, src_mask=None, tgt_mask=None, return_attn=False):
-        mem, mu, logvar, attn_wts = self.encode(src)
+    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
+        mem, mu, logvar = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        if return_attn:
-            return x, mu, logvar, attn_wts
-        else:
-            return x, mu, logvar
+        return x, mu, logvar
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
@@ -230,7 +227,7 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, attn_weights
+        return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
@@ -304,7 +301,7 @@ class RNNEncoder(nn.Module):
         else:
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar, None
+        return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
