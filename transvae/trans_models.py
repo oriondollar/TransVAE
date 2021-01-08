@@ -330,15 +330,15 @@ class VAEShell():
         Quickly sample from latent dimension
         """
         if mode == 'rand':
-            z = torch.randn(size, self.d_latent)
+            z = torch.randn(size, self.params['d_latent'])
         else:
             assert sample_dims is not None, "ERROR: Must provide sample dimensions"
             if mode == 'top_dims':
-                z = torch.zeros((size, self.d_latent))
+                z = torch.zeros((size, self.params['d_latent']))
                 for d in sample_dims:
                     z[:,d] = torch.randn(size)
             elif mode == 'k_dims':
-                z = torch.zeros((size, self.d_latent))
+                z = torch.zeros((size, self.params['d_latent']))
                 d_select = np.random.choice(sample_dims, size=k, replace=False)
                 for d in d_select:
                     z[:,d] = torch.randn(size)
@@ -407,7 +407,7 @@ class VAEShell():
 
         self.model.eval()
         decoded_smiles = []
-        mems = torch.empty((data.shape[0], self.d_latent)).cpu()
+        mems = torch.empty((data.shape[0], self.params['d_latent'])).cpu()
         for j, data in enumerate(data_iter):
             if log:
                 log_file = open('calcs/{}_progress.txt'.format(self.name), 'a')
