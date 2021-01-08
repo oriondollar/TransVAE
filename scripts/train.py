@@ -10,7 +10,7 @@ import pandas as pd
 
 from trans_models import TransVAE
 from rnn_models import RNN, RNNAttn
-from parsers import train_parser
+from parsers import model_init, train_parser
 
 DATA_DIR = pkg_resources.resource_filename('transvae', '../data')
 
@@ -55,32 +55,8 @@ def train(args):
     params['CHAR_DICT'] = char_dict
     params['ORG_DICT'] = org_dict
 
-    # Build model
-    if args.save_name is None:
-        if args.model == 'transvae':
-            save_name = '{}_{}x_latent{}_{}_{}'.format(args.d_model,
-                                                       args.d_feedforward // args.d_model,
-                                                       args.d_latent,
-                                                       args.model,
-                                                       args.data_source)
-        else:
-            save_name = '{}_latent{}_{}_{}'.format(args.d_model,
-                                                   args.d_latent,
-                                                   args.model,
-                                                   args.data_source)
-    else:
-        save_name = args.save_name
-
-    if args.model == 'transvae':
-        vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
-                       d_ff=args.d_feedforward, d_latent=args.d_latent)
-    elif args.model == 'rnnattn':
-        vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
-                      d_latent=args.d_latent)
-    elif args.model == 'rnn':
-        vae = RNN(params=params, name=save_name, d_model=args.d_model,
-                  d_latent=args.d_latent)
-
+    # Train model
+    vae = model_init(args, params)
     vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
 
 

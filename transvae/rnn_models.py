@@ -19,10 +19,11 @@ class RNNAttn(VAEShell):
     """
     RNN-based VAE class with attention.
     """
-    def __init__(self, params, name=None, N=3, d_model=128,
+    def __init__(self, params={}, name=None, N=3, d_model=128,
                  d_latent=128, dropout=0.1, tf=True,
                  bypass_attention=False,
-                 bypass_bottleneck=False):
+                 bypass_bottleneck=False,
+                 load_fn=None):
         super().__init__(params, name)
         """
         Instatiating a GruaVAE object builds the model architecture, data structs
@@ -47,21 +48,38 @@ class RNNAttn(VAEShell):
 
         ### Store architecture params
         self.model_type = 'rnn_attn'
-        self.N = N
-        self.d_model = d_model
-        self.d_latent = d_latent
-        self.dropout = dropout
-        self.tf = tf
-        self.bypass_attention = bypass_attention
-        self.bypass_bottleneck = bypass_bottleneck
+        self.params['model_type'] = self.model_type
+        self.params['N'] = N
+        self.params['d_model'] = d_model
+        self.params['d_latent'] = d_latent
+        self.params['dropout'] = dropout
+        self.params['teacher_force'] = tf
+        self.params['bypass_attention'] = bypass_attention
+        self.params['bypass_bottleneck'] = bypass_bottleneck
+        self.arch_params = ['N', 'd_model', 'd_latent', 'dropout', 'teacher_force',
+                            'bypass_attention', 'bypass_bottleneck']
 
         ### Build model architecture
+        if load_fn is None:
+            self.build_model()
+        else:
+            self.load(load_fn)
+
+    def build_model(self):
+        """
+        Build model architecture. This function is called during initialization as well as when
+        loading a saved model checkpoint
+        """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = RNNAttnEncoder(d_model, d_latent, N, dropout, self.src_len, bypass_attention, bypass_bottleneck, self.device)
-        decoder = RNNAttnDecoder(d_model, d_latent, N, dropout, tf, bypass_bottleneck, self.device)
-        generator = Generator(d_model, self.vocab_size)
-        src_embed = Embeddings(d_model, self.vocab_size)
-        tgt_embed = Embeddings(d_model, self.vocab_size)
+        encoder = RNNAttnEncoder(self.params['d_model'], self.params['d_latent'], self.params['N'],
+                                 self.params['dropout'], self.src_len, self.params['bypass_attention'],
+                                 self.params['bypass_bottleneck'], self.device)
+        decoder = RNNAttnDecoder(self.params['d_model'], self.params['d_latent'], self.params['N'],
+                                 self.params['dropout'], self.params['teacher_force'], self.params['bypass_bottleneck'],
+                                 self.device)
+        generator = Generator(self.params['d_model'], self.vocab_size)
+        src_embed = Embeddings(self.params['d_model'], self.vocab_size)
+        tgt_embed = Embeddings(self.params['d_model'], self.vocab_size)
         self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, self.params)
         for p in self.model.parameters():
             if p.dim() > 1:
@@ -119,9 +137,9 @@ class RNN(VAEShell):
     """
     RNN-based VAE without attention.
     """
-    def __init__(self, params, name=None, N=3, d_model=128,
+    def __init__(self, params={}, name=None, N=3, d_model=128,
                  d_latent=128, dropout=0.1, tf=True,
-                 bypass_bottleneck=False):
+                 bypass_bottleneck=False, load_fn=None):
         super().__init__(params, name)
 
         ### Set learning rate for Adam optimizer
@@ -130,20 +148,35 @@ class RNN(VAEShell):
 
         ### Store architecture params
         self.model_type = 'rnn'
-        self.N = N
-        self.d_model = d_model
-        self.d_latent = d_latent
-        self.dropout = dropout
-        self.tf = tf
-        self.bypass_bottleneck = bypass_bottleneck
+        self.params['model_type'] = self.model_type
+        self.params['N'] = N
+        self.params['d_model'] = d_model
+        self.params['d_latent'] = d_latent
+        self.params['dropout'] = dropout
+        self.params['teacher_force'] = tf
+        self.params['bypass_bottleneck'] = bypass_bottleneck
+        self.arch_params = ['N', 'd_model', 'd_latent', 'dropout', 'teacher_force', 'bypass_bottleneck']
 
         ### Build model architecture
+        if load_fn is None:
+            self.build_model()
+        else:
+            self.load(load_fn)
+
+    def build_model(self):
+        """
+        Build model architecture. This function is called during initialization as well as when
+        loading a saved model checkpoint
+        """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        encoder = RNNEncoder(d_model, d_latent, N, dropout, bypass_bottleneck, self.device)
-        decoder = RNNDecoder(d_model, d_latent, N, dropout, 125, tf, bypass_bottleneck, self.device)
-        generator = Generator(d_model, self.vocab_size)
-        src_embed = Embeddings(d_model, self.vocab_size)
-        tgt_embed = Embeddings(d_model, self.vocab_size)
+        encoder = RNNEncoder(self.params['d_model'], self.params['d_latent'], self.params['N'],
+                             self.params['dropout'], self.params['bypass_bottleneck'], self.device)
+        decoder = RNNDecoder(self.params['d_model'], self.params['d_latent'], self.params['N'],
+                             self.params['dropout'], 125, self.params['teacher_force'], self.params['bypass_bottleneck'],
+                             self.device)
+        generator = Generator(self.params['d_model'], self.vocab_size)
+        src_embed = Embeddings(self.params['d_model'], self.vocab_size)
+        tgt_embed = Embeddings(self.params['d_model'], self.vocab_size)
         self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, self.params)
         for p in self.model.parameters():
             if p.dim() > 1:
@@ -208,7 +241,7 @@ class RNNAttnEncoder(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def forward(self, x):
+    def forward(self, x, return_attn=False):
         h = self.initH(x.shape[0])
         x = x.permute(1, 0, 2)
         x_out, h = self.gru(x, h)
@@ -227,7 +260,10 @@ class RNNAttnEncoder(nn.Module):
             mem = mem.contiguous().view(mem.size(0), -1)
             mu, logvar = self.z_means(mem), self.z_var(mem)
             mem = self.reparameterize(mu, logvar)
-        return mem, mu, logvar
+        if return_attn:
+            return mem, mu, logvar, attn_weights.detach().cpu()
+        else:
+            return mem, mu, logvar
 
     def initH(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)

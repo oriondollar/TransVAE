@@ -30,7 +30,7 @@ class VAEShell():
         if 'BATCH_CHUNKS' not in self.params.keys():
             self.params['BATCH_CHUNKS'] = 5
         if 'BETA_INIT' not in self.params.keys():
-            self.params['BETA_INIT'] = 0
+            self.params['BETA_INIT'] = 1e-8
         if 'BETA' not in self.params.keys():
             self.params['BETA'] = 0.05
         if 'ANNEAL_START' not in self.params.keys():
@@ -41,14 +41,13 @@ class VAEShell():
             self.params['WARMUP_STEPS'] = 10000
         if 'EPS_SCALE' not in self.params.keys():
             self.params['EPS_SCALE'] = 1
-        if 'CHAR_WEIGHTS' in self.params.keys():
-            self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
-        else:
-            self.params['CHAR_WEIGHTS'] = torch.ones(src_vocab, dtype=torch.float)
-        if 'CHAR_DICT' not in self.params.keys() or 'ORG_DICT' not in self.params.keys():
-            print("WARNING: MUST PROVIDE VOCABULARY KEY PRIOR TO TRAINING")
-        self.vocab_size = len(self.params['CHAR_DICT'].keys())
-        self.pad_idx = self.params['CHAR_DICT']['_']
+        if 'CHAR_DICT' in self.params.keys():
+            self.vocab_size = len(self.params['CHAR_DICT'].keys())
+            self.pad_idx = self.params['CHAR_DICT']['_']
+            if 'CHAR_WEIGHTS' in self.params.keys():
+                self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
+            else:
+                self.params['CHAR_WEIGHTS'] = torch.ones(self.vocab_size, dtype=torch.float)
         self.loss_func = vae_loss
         self.data_gen = vae_data_gen
 
@@ -64,8 +63,7 @@ class VAEShell():
                               'model_state_dict': None,
                               'optimizer_state_dict': None,
                               'best_loss': self.best_loss,
-                              'params': self.params,
-                              'latent_distribution': None}
+                              'params': self.params}
         self.loaded_from = None
 
     def save(self, state, fn, path='checkpoints', use_name=True):
@@ -115,8 +113,13 @@ class VAEShell():
         self.n_epochs = self.current_state['epoch']
         self.best_loss = self.current_state['best_loss']
         for k, v in self.current_state['params'].items():
-            if k not in self.params.keys():
+            if k in self.arch_params or k not in self.params.keys():
                 self.params[k] = v
+            else:
+                pass
+        self.vocab_size = len(self.params['CHAR_DICT'].keys())
+        self.pad_idx = self.params['CHAR_DICT']['_']
+        self.build_model()
         self.model.load_state_dict(self.current_state['model_state_dict'])
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
@@ -529,8 +532,9 @@ class TransVAE(VAEShell):
     latent space. "Memory value" matrices are convolved to latent bottleneck and
     deconvolved before being sent to source attention in decoder.
     """
-    def __init__(self, params, name=None, N=3, d_model=128, d_ff=512,
-                 d_latent=128, h=4, dropout=0.1, bypass_bottleneck=False):
+    def __init__(self, params={}, name=None, N=3, d_model=128, d_ff=512,
+                 d_latent=128, h=4, dropout=0.1, bypass_bottleneck=False,
+                 load_fn=None):
         super().__init__(params, name)
         """
         Instatiating a TransVAE object builds the model architecture, data structs
@@ -553,25 +557,40 @@ class TransVAE(VAEShell):
 
         ### Store architecture params
         self.model_type = 'transformer'
-        self.N = N
-        self.d_model = d_model
-        self.d_ff = d_ff
-        self.d_latent = d_latent
-        self.h = h
-        self.dropout = dropout
-        self.bypass_bottleneck = bypass_bottleneck
+        self.params['model_type'] = self.model_type
+        self.params['N'] = N
+        self.params['d_model'] = d_model
+        self.params['d_ff'] = d_ff
+        self.params['d_latent'] = d_latent
+        self.params['h'] = h
+        self.params['dropout'] = dropout
+        self.params['bypass_bottleneck'] = bypass_bottleneck
+        self.arch_params = ['N', 'd_model', 'd_ff', 'd_latent', 'h', 'dropout', 'bypass_bottleneck']
 
         ### Build model architecture
+        if load_fn is None:
+            self.build_model()
+        else:
+            self.load(load_fn)
+
+    def build_model(self):
+        """
+        Build model architecture. This function is called during initialization as well as when
+        loading a saved model checkpoint
+        """
         c = copy.deepcopy
-        attn = MultiHeadedAttention(h, d_model)
-        ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-        position = PositionalEncoding(d_model, dropout)
-        encoder = VAEEncoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck, self.params['EPS_SCALE'])
-        decoder = VAEDecoder(EncoderLayer(d_model, self.src_len, c(attn), c(ff), dropout),
-                             DecoderLayer(d_model, self.tgt_len, c(attn), c(attn), c(ff), dropout), N, d_latent, bypass_bottleneck)
-        src_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
-        tgt_embed = nn.Sequential(Embeddings(d_model, self.vocab_size), c(position))
-        generator = Generator(d_model, self.vocab_size)
+        attn = MultiHeadedAttention(self.params['h'], self.params['d_model'])
+        ff = PositionwiseFeedForward(self.params['d_model'], self.params['d_ff'], self.params['dropout'])
+        position = PositionalEncoding(self.params['d_model'], self.params['dropout'])
+        encoder = VAEEncoder(EncoderLayer(self.params['d_model'], self.src_len, c(attn), c(ff), self.params['dropout']),
+                                          self.params['N'], self.params['d_latent'], self.params['bypass_bottleneck'],
+                                          self.params['EPS_SCALE'])
+        decoder = VAEDecoder(EncoderLayer(self.params['d_model'], self.src_len, c(attn), c(ff), self.params['dropout']),
+                             DecoderLayer(self.params['d_model'], self.tgt_len, c(attn), c(attn), c(ff), self.params['dropout']),
+                                          self.params['N'], self.params['d_latent'], self.params['bypass_bottleneck'])
+        src_embed = nn.Sequential(Embeddings(self.params['d_model'], self.vocab_size), c(position))
+        tgt_embed = nn.Sequential(Embeddings(self.params['d_model'], self.vocab_size), c(position))
+        generator = Generator(self.params['d_model'], self.vocab_size)
         self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator)
         for p in self.model.parameters():
             if p.dim() > 1:
@@ -582,7 +601,7 @@ class TransVAE(VAEShell):
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
 
         ### Initiate optimizer
-        self.optimizer = NoamOpt(d_model, self.params['LR_SCALE'], self.params['WARMUP_STEPS'],
+        self.optimizer = NoamOpt(self.params['d_model'], self.params['LR_SCALE'], self.params['WARMUP_STEPS'],
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
@@ -703,6 +722,25 @@ class VAEEncoder(nn.Module):
             pred_len = self.predict_len2(pred_len)
         return mem, mu, logvar, pred_len
 
+    def forward_w_attn(self, x, mask):
+        "Forward pass that saves attention weights"
+        attn_wts = []
+        for i, attn_layer in enumerate(self.layers):
+            x, wts = attn_layer(x, mask, return_attn=True)
+            attn_wts.append(wts.detach().cpu())
+        mem = self.norm(x)
+        if self.bypass_bottleneck:
+            mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
+        else:
+            mem = mem.permute(0, 2, 1)
+            mem = self.conv_bottleneck(mem)
+            mem = mem.contiguous().view(mem.size(0), -1)
+            mu, logvar = self.z_means(mem), self.z_var(mem)
+            mem = self.reparameterize(mu, logvar, self.eps_scale)
+            pred_len = self.predict_len1(mu)
+            pred_len = self.predict_len2(pred_len)
+        return mem, mu, logvar, pred_len, attn_wts
+
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
     def __init__(self, size, src_len, self_attn, feed_forward, dropout):
@@ -713,9 +751,14 @@ class EncoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(self.size, dropout), 2)
 
-    def forward(self, x, mask):
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return self.sublayer[1](x, self.feed_forward)
+    def forward(self, x, mask, return_attn=False):
+        if return_attn:
+            attn = self.self_attn(x, x, x, mask, return_attn=True)
+            x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+            return self.sublayer[1](x, self.feed_forward), attn
+        else:
+            x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+            return self.sublayer[1](x, self.feed_forward)
 
 class VAEDecoder(nn.Module):
     "Generic N layer decoder with masking"
@@ -746,6 +789,22 @@ class VAEDecoder(nn.Module):
             x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)
 
+    def forward_w_attn(self, x, mem, src_mask, tgt_mask):
+        "Forward pass that saves attention weights"
+        if not self.bypass_bottleneck:
+            mem = F.relu(self.linear(mem))
+            mem = mem.view(-1, 64, 9)
+            mem = self.deconv_bottleneck(mem)
+            mem = mem.permute(0, 2, 1)
+        for final_encode in self.final_encodes:
+            mem, deconv_wts  = final_encode(mem, src_mask, return_attn=True)
+        mem = self.norm(mem)
+        src_attn_wts = []
+        for i, attn_layer in enumerate(self.layers):
+            x, wts = attn_layer(x, mem, mem, src_mask, tgt_mask, return_attn=True)
+            src_attn_wts.append(wts.detach().cpu())
+        return self.norm(x), [deconv_wts.detach().cpu()], src_attn_wts
+
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward"
     def __init__(self, size, tgt_len, self_attn, src_attn, feed_forward, dropout):
@@ -757,12 +816,18 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(self.size, dropout), 3)
 
-    def forward(self, x, memory_key, memory_val, src_mask, tgt_mask):
+    def forward(self, x, memory_key, memory_val, src_mask, tgt_mask, return_attn=False):
         m_key = memory_key
         m_val = memory_val
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m_key, m_val, src_mask))
-        return self.sublayer[2](x, self.feed_forward)
+        if return_attn:
+            x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
+            src_attn = self.src_attn(x, m_key, m_val, src_mask, return_attn=True)
+            x = self.sublayer[1](x, lambda x: self.src_attn(x, m_key, m_val, src_mask))
+            return self.sublayer[2](x, self.feed_forward), src_attn
+        else:
+            x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
+            x = self.sublayer[1](x, lambda x: self.src_attn(x, m_key, m_val, src_mask))
+            return self.sublayer[2](x, self.feed_forward)
 
 ############## Attention and FeedForward ################
 
