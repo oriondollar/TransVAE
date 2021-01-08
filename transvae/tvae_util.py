@@ -140,7 +140,8 @@ def decode_smiles(encoded_tensors, org_dict):
         smiles.append(smile)
     return smiles
 
-def calc_reconstruction_accuracies(input_smiles, output_smiles, max_len):
+def calc_reconstruction_accuracies(input_smiles, output_smiles):
+    max_len = 126
     smile_accs = []
     hits = 0
     misses = 0
