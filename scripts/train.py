@@ -1,18 +1,13 @@
 import os
-import sys
-sys.path.append(os.getcwd())
-sys.path.append('{}/transvae'.format(os.getcwd()))
 import pickle
 import pkg_resources
 
 import numpy as np
 import pandas as pd
 
-from trans_models import TransVAE
-from rnn_models import RNN, RNNAttn
-from parsers import model_init, train_parser
-
-DATA_DIR = pkg_resources.resource_filename('transvae', '../data')
+from TransVAE.transvae.trans_models import TransVAE
+from TransVAE.transvae.rnn_models import RNN, RNNAttn
+from TransVAE.scripts.parsers import model_init, train_parser
 
 def train(args):
     # Build params dict
@@ -38,11 +33,11 @@ def train(args):
             char_weights = pd.read_csv(args.char_weights_path)
             params['CHAR_WEIGHTS'] = char_weights
     else:
-        train_data = pd.read_csv('{}/{}_train.txt'.format(DATA_DIR, args.data_source)).to_numpy()
-        test_data = pd.read_csv('{}/{}_test.txt'.format(DATA_DIR, args.data_source)).to_numpy()
-        with open('{}/char_dict_{}.pkl'.format(DATA_DIR, args.data_source), 'rb') as f:
+        train_data = pd.read_csv('data/{}_train.txt'.format(args.data_source)).to_numpy()
+        test_data = pd.read_csv('data/{}_test.txt'.format(args.data_source)).to_numpy()
+        with open('data/char_dict_{}.pkl'.format(args.data_source), 'rb') as f:
             char_dict = pickle.load(f)
-        char_weights = np.load('{}/char_weights_{}.npy'.format(DATA_DIR, args.data_source))
+        char_weights = np.load('data/char_weights_{}.npy'.format(args.data_source))
         params['CHAR_WEIGHTS'] = char_weights
 
     org_dict = {}
@@ -57,7 +52,7 @@ def train(args):
 
     # Train model
     vae = model_init(args, params)
-    vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
+    # vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
 
 
 if __name__ == '__main__':

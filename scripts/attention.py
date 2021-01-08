@@ -1,7 +1,4 @@
 import os
-import sys
-sys.path.append(os.getcwd())
-sys.path.append('{}/transvae'.format(os.getcwd()))
 import pickle
 import pkg_resources
 
@@ -11,11 +8,11 @@ import pandas as pd
 import torch
 from torch.autograd import Variable
 
-from trans_models import TransVAE
-from rnn_models import RNN, RNNAttn
+from TransVAE.transvae.trans_models import TransVAE
+from TransVAE.transvae.rnn_models import RNN, RNNAttn
 
-from data import vae_data_gen, make_std_mask
-from parsers import attn_parser
+from TransVAE.transvae.data import vae_data_gen, make_std_mask
+from TransVAE.scripts.parsers import attn_parser
 
 def calc_attention(args):
     # Load model

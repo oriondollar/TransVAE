@@ -1,17 +1,14 @@
 import os
-import sys
-sys.path.append(os.getcwd())
-sys.path.append('{}/transvae'.format(os.getcwd()))
 import pickle
 import pkg_resources
 
 import numpy as np
 import pandas as pd
 
-from trans_models import TransVAE
-from rnn_models import RNN, RNNAttn
-from tvae_util import calc_entropy
-from parsers import sample_parser
+from TransVAE.transvae.trans_models import TransVAE
+from TransVAE.transvae.rnn_models import RNN, RNNAttn
+from TransVAE.transvae.tvae_util import calc_entropy
+from TransVAE.scripts.parsers import sample_parser
 
 def sample(args):
     # Load model
@@ -19,10 +16,9 @@ def sample(args):
     if args.model == 'transvae':
         vae = TransVAE(load_fn=ckpt_fn)
     elif args.model == 'rnnattn':
-        vae = RNNAttn(build=False)
+        vae = RNNAttn(load_fn=ckpt_fn)
     elif args.model == 'rnn':
-        vae = RNN(build=False)
-    vae.load(ckpt_fn)
+        vae = RNN(load_fn=ckpt_fn)
 
     # Calculate entropy depending on sampling mode
     if args.sample_mode == 'rand':
