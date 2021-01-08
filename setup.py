@@ -5,7 +5,7 @@ HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text()
 
 setup(
-	name='cnns4qspr',
+	name='transvae',
     version='0.4',
 	description='A package for training and analyzing attention VAEs for molecular design.',
     long_description=README,
