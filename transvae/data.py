@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
-from tvae_util import *
+from transvae.tvae_util import *
 
 def vae_data_gen(data, char_dict):
     smiles = data[:,0]

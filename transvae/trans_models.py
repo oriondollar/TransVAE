@@ -9,10 +9,10 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 
-from tvae_util import *
-from opt import NoamOpt
-from data import vae_data_gen, make_std_mask
-from loss import vae_loss, trans_vae_loss
+from transvae.tvae_util import *
+from transvae.opt import NoamOpt
+from transvae.data import vae_data_gen, make_std_mask
+from transvae.loss import vae_loss, trans_vae_loss
 
 
 ####### MODEL SHELL ##########

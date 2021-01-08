@@ -5,9 +5,9 @@ import pkg_resources
 import numpy as np
 import pandas as pd
 
-from TransVAE.transvae.trans_models import TransVAE
-from TransVAE.transvae.rnn_models import RNN, RNNAttn
-from TransVAE.scripts.parsers import model_init, train_parser
+from transvae.trans_models import TransVAE
+from transvae.rnn_models import RNN, RNNAttn
+from scripts.parsers import model_init, train_parser
 
 def train(args):
     # Build params dict
