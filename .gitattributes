@@ -1,0 +1,16 @@
+checkpoints/rnn-256_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnnattn-128_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans4x-256_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans4x-128_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans4x-256_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnn-128_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnnattn-256_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans1x-128_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans1x-128_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans4x-128_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnn-128_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnnattn-128_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnnattn-256_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/rnn-256_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans1x-256_pubchem.ckpt filter=lfs diff=lfs merge=lfs -text
+checkpoints/trans1x-256_zinc.ckpt filter=lfs diff=lfs merge=lfs -text
