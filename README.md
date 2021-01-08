@@ -6,7 +6,7 @@ This repo contains the codebase for the attention-based implementations of VAE m
 - **scripts**: scripts for training models, generating samples and performing calculations
 - **notebooks**: jupyter notebook tutorials and example calculations
 - **checkpoints**: pre-trained model files
-- **data**: token vocabularies and weights for ZINC and PubChem datasets (***note - full train and test sets available for download here)
+- **data**: token vocabularies and weights for ZINC and PubChem datasets (***note - full train and test sets available for download [here](https://drive.google.com/drive/folders/1TtJz9jATT4jLArQLWPS7ckSX0S8peiua?usp=sharing))
 
 ## Installation
 
