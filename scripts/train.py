@@ -52,7 +52,7 @@ def train(args):
 
     # Train model
     vae = model_init(args, params)
-    # vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
+    vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
 
 
 if __name__ == '__main__':
