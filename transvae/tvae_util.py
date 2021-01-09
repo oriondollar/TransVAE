@@ -194,7 +194,7 @@ def load_gen(path):
     smiles = pd.read_csv(path).SMILES.to_list()
     return smiles
 
-def filter_invalid(smiles):
+def valid(smiles):
     valid_smiles = []
     for smi in smiles:
         mol = Chem.MolFromSmiles(smi)
@@ -222,7 +222,7 @@ def calc_MW(smiles):
         MWs.append(Descriptors.MolWt(mol))
     return MWs
 
-def novelty(smiles, train_smiles):
+def novel(smiles, train_smiles):
     set_smiles = set(smiles)
     set_train = set(train_smiles)
     novel_smiles = list(set_smiles - set_train)
