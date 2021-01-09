@@ -263,8 +263,13 @@ def pass_through_filters(smiles, data_dir='data'):
             filtered_smiles.append(smi)
     return filtered_smiles
 
-def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
-                         device='cpu'):
+def cross_diversity(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
+                    device='cpu'):
+    """
+    Function for calculating the maximum average tanimoto similarity score
+    between the generated set and the training set (this code is adapted from
+    https://github.com/molecularsets/moses)
+    """
     agg_tanimoto = np.zeros(len(set2))
     total = np.zeros(len(set2))
     set2 = torch.tensor(set2).to(device).float()
@@ -289,7 +294,7 @@ def average_agg_tanimoto(set1, set2, bs1=5000, bs2=5000, p=1, agg='max',
         agg_tanimoto /= total
     if p != 1:
         agg_tanimoto = (agg_tanimoto)**(1/p)
-    return np.mean(agg_tanimoto)
+    return 1 - np.mean(agg_tanimoto)
 
 
 ####### GRADIENT TROUBLESHOOTING #########
