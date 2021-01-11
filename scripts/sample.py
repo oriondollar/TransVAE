@@ -39,7 +39,7 @@ def sample(args):
     samples = []
     n_gen = args.n_samples
     while n_gen > 0:
-        current_samples = vae.sample(args.batch_size, sample_mode=sample_mode,
+        current_samples = vae.sample(args.n_samples_per_batch, sample_mode=sample_mode,
                                      sample_dims=sample_dims, k=args.k)
         samples.extend(current_samples)
         n_gen -= len(current_samples)
