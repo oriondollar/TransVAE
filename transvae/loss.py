@@ -17,7 +17,7 @@ def vae_loss(x, x_out, mu, logvar, weights, beta=1):
     return BCE + KLD, BCE, KLD
 
 def trans_vae_loss(x, x_out, mu, logvar, true_len, pred_len, weights, beta=1):
-    "Binary Cross Entropy Loss + Kiebler-Lublach Divergence"
+    "Binary Cross Entropy Loss + Kiebler-Lublach Divergence + Mask Length Prediction"
     x = x.long()[:,1:] - 1
     x = x.contiguous().view(-1)
     x_out = x_out.contiguous().view(-1, x_out.size(2))
@@ -28,4 +28,3 @@ def trans_vae_loss(x, x_out, mu, logvar, true_len, pred_len, weights, beta=1):
     if torch.isnan(KLD):
         KLD = 0.
     return BCEmol + BCEmask + KLD, BCEmol, BCEmask, KLD
-    

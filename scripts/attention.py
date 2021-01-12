@@ -15,7 +15,7 @@ from TransVAE.transvae.data import vae_data_gen, make_std_mask
 from TransVAE.scripts.parsers import attn_parser
 
 def calc_attention(args):
-    # Load model
+    ### Load model
     ckpt_fn = args.model_ckpt
     if args.model == 'transvae':
         vae = TransVAE(load_fn=ckpt_fn)
@@ -30,7 +30,7 @@ def calc_attention(args):
         data = pd.read_csv(args.smiles).to_numpy()
         data = data[:args.n_samples,:]
 
-    # Load data and prepare for iteration
+    ### Load data and prepare for iteration
     data = vae_data_gen(data, char_dict=vae.params['CHAR_DICT'])
     data_iter = torch.utils.data.DataLoader(data,
                                             batch_size=args.batch_size,
@@ -39,14 +39,14 @@ def calc_attention(args):
     save_shape = len(data_iter)*args.batch_size
     chunk_size = args.batch_size // args.batch_chunks
 
-    # Prepare save path
+    ### Prepare save path
     if args.save_path is None:
         os.makedirs('attn_wts', exist_ok=True)
         save_path = 'attn_wts/{}'.format(vae.name)
     else:
         save_path = args.save_path
 
-    # Calculate attention weights
+    ### Calculate attention weights
     vae.model.eval()
     if args.model == 'transvae':
         self_attn = torch.empty((save_shape, 4, 4, 127, 127))

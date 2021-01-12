@@ -10,6 +10,16 @@ from transvae.tvae_util import KLAnnealer
 # Plotting functions
 
 def plot_test_train_curves(paths, target_path=None, loss_type='tot_loss', data_type='test', labels=None, colors=None):
+    """
+    Plots the training curves for a set of model log files
+
+    Arguments:
+        paths (list, req): List of paths to log files (generated during training)
+        target_path (str): Optional path to plot target loss (if you are trying to replicate or improve upon a given loss curve)
+        loss_type (str): The type of loss to plot - tot_loss, kld_loss, recon_loss, etc.
+        labels (list): List of labels for plot legend
+        colors (list): List of colors for each training curve
+    """
     if colors is None:
         colors = ['#005073', '#B86953', '#932191', '#90041F', '#0F4935']
     if labels is None:
@@ -36,9 +46,9 @@ def plot_test_train_curves(paths, target_path=None, loss_type='tot_loss', data_t
     if target_path is not None:
         df = pd.read_csv(target_path)
         try:
-            target = df[df.data_type == 'train'].groupby('epoch').mean()[loss_type]
+            target = df[df.data_type == data_type].groupby('epoch').mean()[loss_type]
         except KeyError:
-            target = df[df.data_type == 'train'].groupby('epoch').mean()['bce_loss']
+            target = df[df.data_type == data_type].groupby('epoch').mean()['bce_loss']
         plt.plot(target, c='black', ls=':', lw=2.5, label='Approximate Goal')
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
@@ -49,6 +59,13 @@ def plot_test_train_curves(paths, target_path=None, loss_type='tot_loss', data_t
     return plt
 
 def plot_loss_by_type(path, colors=None):
+    """
+    Plot the training curve of one model for each loss type
+
+    Arguments:
+        path (str, req): Path to log file of trained model
+        colors (list): Colors for each loss type
+    """
     if colors is None:
         colors = ['#005073', '#B86953', '#932191', '#90041F', '#0F4935']
 
@@ -73,6 +90,13 @@ def plot_loss_by_type(path, colors=None):
     return plt
 
 def plot_reconstruction_accuracies(dir, colors=None):
+    """
+    Plots token, SMILE and positional reconstruction accuracies for all model types in directory
+
+    Arguments:
+        dir (str, req): Directory to json files containing stored accuracies for each trained model
+        colors (list): List of colors for each trained model
+    """
     if colors is None:
         colors = ['#005073', '#B86953', '#932191', '#90041F', '#0F4935']
 
@@ -107,6 +131,15 @@ def plot_reconstruction_accuracies(dir, colors=None):
     return fig
 
 def plot_moses_metrics(dir, colors=None):
+    """
+    Plots tiled barplot depicting the performance of the model on each MOSES metric as a function
+    of epoch.
+
+    Arguments:
+        dir (str, req): Directory to json files containing calculated MOSES metrics for each model type
+        colors (list): List of colors for each trained model
+
+    """
     if colors is None:
         colors = ['#005073', '#B86953', '#932191', '#90041F', '#0F4935']
 
@@ -148,6 +181,17 @@ def plot_moses_metrics(dir, colors=None):
 
 
 def get_json_data(dir, fns=None, labels=None):
+    """
+    Opens and stores json data from a given directory
+
+    Arguments:
+        dir (str, req): Directory containing the json files
+        labels (list): Labels corresponding to each file
+    Returns:
+        data (dict): Dictionary containing all data within
+                     json files
+        labels (list): List of keys corresponding to dictionary entries
+    """
     if fns is None:
         fns = []
         for fn in os.listdir(dir):

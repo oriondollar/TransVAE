@@ -10,7 +10,7 @@ from transvae.rnn_models import RNN, RNNAttn
 from scripts.parsers import model_init, train_parser
 
 def train(args):
-    # Build params dict
+    ### Build params dict
     params = {'ADAM_LR': args.adam_lr,
               'ANNEAL_START': args.anneal_start,
               'BATCH_CHUNKS': args.batch_chunks,
@@ -21,7 +21,7 @@ def train(args):
               'LR_SCALE': args.lr_scale,
               'WARMUP_STEPS': args.warmup_steps}
 
-    # Load data, vocab and token weights
+    ### Load data, vocab and token weights
     if args.data_source == 'custom':
         assert args.train_path is not None and args.test_path is not None and args.vocab_path is not None,\
         "ERROR: Must specify files for train/test data and vocabulary"
@@ -50,7 +50,7 @@ def train(args):
     params['CHAR_DICT'] = char_dict
     params['ORG_DICT'] = org_dict
 
-    # Train model
+    ### Train model
     vae = model_init(args, params)
     vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
 

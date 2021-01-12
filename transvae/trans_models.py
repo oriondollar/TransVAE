@@ -135,7 +135,9 @@ class VAEShell():
                                            model development or validation
             epochs (int): Number of epochs to train the model for
             save (bool): If true, saves latest and best versions of model
+            save_freq (int): Frequency with which to save model checkpoints
             log (bool): If true, writes training metrics to log file
+            log_dir (str): Directory to store log files
         """
         ### Prepare data iterators
         train_data = self.data_gen(train_data, char_dict=self.params['CHAR_DICT'])
@@ -328,6 +330,15 @@ class VAEShell():
     def sample_from_memory(self, size, mode='rand', sample_dims=None, k=5):
         """
         Quickly sample from latent dimension
+
+        Arguments:
+            size (int, req): Number of samples to generate in one batch
+            mode (str): Sampling mode (rand, high_entropy or k_high_entropy)
+            sample_dims (list): List of dimensions to sample from if mode is
+                                high_entropy or k_high_entropy
+            k (int): Number of high entropy dimensions to randomly sample from
+        Returns:
+            z (torch.tensor): NxD_latent tensor containing sampled memory vectors
         """
         if mode == 'rand':
             z = torch.randn(size, self.params['d_latent'])
@@ -346,7 +357,14 @@ class VAEShell():
 
     def greedy_decode(self, mem, src_mask=None):
         """
-        Greedy decode from model memory.
+        Greedy decode from model memory
+
+        Arguments:
+            mem (torch.tensor, req): Memory tensor to send to decoder
+            src_mask (torch.tensor): Mask tensor to hide padding tokens (if
+                                     model_type == 'transformer')
+        Returns:
+            decoded (torch.tensor): Tensor of predicted token ids
         """
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
@@ -394,7 +412,17 @@ class VAEShell():
 
         Arguments:
             data (np.array, required): Input array consisting of smiles and property
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
+            method (str): Method for decoding. Greedy decoding is currently the only
+                          method implemented. May implement beam search, top_p or top_k
+                          in future versions.
+            log (bool): If true, tracks reconstruction progress in separate log file
+            return_mems (bool): If true, returns memory vectors in addition to decoded SMILES
+            return_str (bool): If true, translates decoded vectors into SMILES strings. If false
+                               returns tensor of token ids
+        Returns:
+            decoded_smiles (list): Decoded smiles data - either decoded SMILES strings or tensor of
+                                   token ids
+            mems (np.array): Array of model memory vectors
         """
         data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
 
@@ -450,11 +478,22 @@ class VAEShell():
     def sample(self, n, method='greedy', sample_mode='rand',
                         sample_dims=None, k=None, return_str=True):
         """
-        Method for decoding sampled memory back into smiles
+        Method for sampling from memory and decoding back into SMILES strings
 
         Arguments:
             n (int): Number of data points to sample
-            method (str): Method for decoding - 'greedy', 'beam search', 'top_k', 'top_p'
+            method (str): Method for decoding. Greedy decoding is currently the only
+                          method implemented. May implement beam search, top_p or top_k
+                          in future versions.
+            sample_mode (str): Sampling mode (rand, high_entropy or k_high_entropy)
+            sample_dims (list): List of dimensions to sample from if mode is
+                                high_entropy or k_high_entropy
+            k (int): Number of high entropy dimensions to randomly sample from
+            return_str (bool): If true, translates decoded vectors into SMILES strings. If false
+                               returns tensor of token ids
+        Returns:
+            decoded (list): Decoded smiles data - either decoded SMILES strings or tensor of
+                            token ids
         """
         mem = self.sample_from_memory(n, mode=sample_mode, sample_dims=sample_dims, k=k)
 
@@ -473,7 +512,18 @@ class VAEShell():
 
     def calc_mems(self, data, log=True, save_dir='memory', save_fn='model_name', save=True):
         """
-        Method for calculating and saving the memory of each neural net.
+        Method for calculating and saving the memory of each neural net
+
+        Arguments:
+            data (np.array, req): Input array containing SMILES strings
+            log (bool): If true, tracks calculation progress in separate log file
+            save_dir (str): Directory to store output memory array
+            save_fn (str): File name to store output memory array
+            save (bool): If true, saves memory to disk. If false, returns memory
+        Returns:
+            mems(np.array): Reparameterized memory array
+            mus(np.array): Mean memory array (prior to reparameterization)
+            logvars(np.array): Log variance array (prior to reparameterization)
         """
         data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
 
@@ -605,49 +655,9 @@ class TransVAE(VAEShell):
                                  torch.optim.Adam(self.model.parameters(), lr=0,
                                  betas=(0.9,0.98), eps=1e-9))
 
-    # def calc_attn(self, data):
-    #     """
-    #     Method for calculating and saving the transformer attention weights.
-    #     """
-    #     data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
-    #
-    #     data_iter = torch.utils.data.DataLoader(data,
-    #                                             batch_size=self.params['BATCH_SIZE'],
-    #                                             shuffle=False, num_workers=0,
-    #                                             pin_memory=False, drop_last=True)
-    #     save_shape = len(data_iter)*self.params['BATCH_SIZE']
-    #     self.batch_size = self.params['BATCH_SIZE']
-    #     self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-    #     self_attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
-    #     src_attn_wts = torch.empty((save_shape, 3, 4, 126, 127)).cpu()
-    #
-    #     self.model.eval()
-    #     for j, data in enumerate(data_iter):
-    #         for i in range(self.params['BATCH_CHUNKS']):
-    #             batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-    #             if self.use_gpu:
-    #                 batch_data = batch_data.cuda()
-    #
-    #             src = Variable(batch_data).long()
-    #             src_mask = (src != self.pad_idx).unsqueeze(-2)
-    #             tgt = Variable(batch_data[:,:-1]).long()
-    #             tgt_mask = make_std_mask(tgt, self.pad_idx)
-    #
-    #             ### Run through encoder to get memory
-    #             x_out, mu, logvar, pred_len, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
-    #             start = j*self.batch_size+i*self.chunk_size
-    #             stop = j*self.batch_size+(i+1)*self.chunk_size
-    #             for i in range(len(wts[0])):
-    #                 self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
-    #             self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
-    #             for i in range(len(wts[2])):
-    #                 src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
-    #
-    #     return self_attn_wts.numpy(), src_attn_wts.numpy()
-
 class EncoderDecoder(nn.Module):
     """
-    A standard Encoder-Decoder architecture
+    Base transformer Encoder-Decoder architecture
     """
     def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
         super().__init__()
@@ -671,7 +681,7 @@ class EncoderDecoder(nn.Module):
         return self.decoder(self.tgt_embed(tgt), mem, src_mask, tgt_mask)
 
 class Generator(nn.Module):
-    "Define standard linear + softmax generation step"
+    "Generates token predictions after final decoder layer"
     def __init__(self, d_model, vocab):
         super().__init__()
         self.proj = nn.Linear(d_model, vocab-1)
@@ -680,7 +690,7 @@ class Generator(nn.Module):
         return self.proj(x)
 
 class VAEEncoder(nn.Module):
-    "Core encoder is a stack of N layers"
+    "Base transformer encoder architecture"
     def __init__(self, layer, N, d_latent, bypass_bottleneck, eps_scale):
         super().__init__()
         self.layers = clones(layer, N)
@@ -694,6 +704,7 @@ class VAEEncoder(nn.Module):
         self.eps_scale = eps_scale
 
     def predict_mask_length(self, mem):
+        "Predicts mask length from latent memory so mask can be re-created during inference"
         pred_len = self.predict_len1(mem)
         pred_len = self.predict_len2(pred_len)
         pred_len = F.softmax(pred_len, dim=-1)
@@ -701,15 +712,18 @@ class VAEEncoder(nn.Module):
         return pred_len
 
     def reparameterize(self, mu, logvar, eps_scale=1):
+        "Stochastic reparameterization"
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std) * eps_scale
         return mu + eps*std
 
     def forward(self, x, mask):
-        "Pass the input (and mask) through each layer in turn"
+        ### Attention and feedforward layers
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mask)
+        ### Batch normalization
         mem = self.norm(x)
+        ### Convolutional Bottleneck
         if self.bypass_bottleneck:
             mu, logvar = Variable(torch.tensor([0.0])), Variable(torch.tensor([0.0]))
         else:
@@ -742,7 +756,7 @@ class VAEEncoder(nn.Module):
         return mem, mu, logvar, pred_len, attn_wts
 
 class EncoderLayer(nn.Module):
-    "Encoder is made up of self-attn and feed forward (defined below)"
+    "Self-attention/feedforward implementation"
     def __init__(self, size, src_len, self_attn, feed_forward, dropout):
         super().__init__()
         self.size = size
@@ -761,7 +775,7 @@ class EncoderLayer(nn.Module):
             return self.sublayer[1](x, self.feed_forward)
 
 class VAEDecoder(nn.Module):
-    "Generic N layer decoder with masking"
+    "Base transformer decoder architecture"
     def __init__(self, encoder_layers, decoder_layers, N, d_latent, bypass_bottleneck):
         super().__init__()
         self.final_encodes = clones(encoder_layers, 1)
@@ -776,15 +790,18 @@ class VAEDecoder(nn.Module):
         self.deconv_bottleneck = DeconvBottleneck(decoder_layers.size)
 
     def forward(self, x, mem, src_mask, tgt_mask):
-        "Pass the memory and target into decoder"
+        ### Deconvolutional bottleneck (up-sampling)
         if not self.bypass_bottleneck:
             mem = F.relu(self.linear(mem))
             mem = mem.view(-1, 64, 9)
             mem = self.deconv_bottleneck(mem)
             mem = mem.permute(0, 2, 1)
+        ### Final self-attention layer
         for final_encode in self.final_encodes:
             mem = final_encode(mem, src_mask)
+        # Batch normalization
         mem = self.norm(mem)
+        ### Source-attention layers
         for i, attn_layer in enumerate(self.layers):
             x = attn_layer(x, mem, mem, src_mask, tgt_mask)
         return self.norm(x)
@@ -806,7 +823,7 @@ class VAEDecoder(nn.Module):
         return self.norm(x), [deconv_wts.detach().cpu()], src_attn_wts
 
 class DecoderLayer(nn.Module):
-    "Decoder is made of self-attn, src-attn, and feed forward"
+    "Self-attention/source-attention/feedforward implementation"
     def __init__(self, size, tgt_len, self_attn, src_attn, feed_forward, dropout):
         super().__init__()
         self.size = size
@@ -832,6 +849,7 @@ class DecoderLayer(nn.Module):
 ############## Attention and FeedForward ################
 
 class MultiHeadedAttention(nn.Module):
+    "Multihead attention implementation (based on Vaswani et al.)"
     def __init__(self, h, d_model, dropout=0.1):
         "Take in model size and number of heads"
         super().__init__()
@@ -866,7 +884,7 @@ class MultiHeadedAttention(nn.Module):
             return self.linears[-1](x)
 
 class PositionwiseFeedForward(nn.Module):
-    "Implements FFN equation"
+    "Feedforward implementation"
     def __init__(self, d_model, d_ff, dropout=0.1):
         super().__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
@@ -936,6 +954,7 @@ class DeconvBottleneck(nn.Module):
 ############## Embedding Layers ###################
 
 class Embeddings(nn.Module):
+    "Transforms input token id tensors to size d_model embeddings"
     def __init__(self, d_model, vocab):
         super().__init__()
         self.lut = nn.Embedding(vocab, d_model)
@@ -945,7 +964,7 @@ class Embeddings(nn.Module):
         return self.lut(x) * math.sqrt(self.d_model)
 
 class PositionalEncoding(nn.Module):
-    "Implement the PE function"
+    "Static sinusoidal positional encoding layer"
     def __init__(self, d_model, dropout, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -967,7 +986,7 @@ class PositionalEncoding(nn.Module):
 ############## Utility Layers ####################
 
 class TorchLayerNorm(nn.Module):
-    "Construct a layernorm module (See citation for details)"
+    "Construct a layernorm module (pytorch)"
     def __init__(self, features, eps=1e-6):
         super().__init__()
         self.bn = nn.BatchNorm1d(features)
@@ -976,7 +995,7 @@ class TorchLayerNorm(nn.Module):
         return self.bn(x)
 
 class LayerNorm(nn.Module):
-    "Construct a layernorm module (See citation for details)"
+    "Construct a layernorm module (manual)"
     def __init__(self, features, eps=1e-6):
         super().__init__()
         self.a_2 = nn.Parameter(torch.ones(features))

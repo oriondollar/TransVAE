@@ -26,17 +26,19 @@ rdBase.DisableLog('rdApp.*')
 ######## MODEL HELPERS ##########
 
 def clones(module, N):
-    "Produce N identical layers"
+    """Produce N identical layers (adapted from
+    http://nlp.seas.harvard.edu/2018/04/03/attention.html)"""
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 def subsequent_mask(size):
-    "Mask out subsequent positions"
+    """Mask out subsequent positions (adapted from
+    http://nlp.seas.harvard.edu/2018/04/03/attention.html)"""
     attn_shape = (1, size, size)
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
 def attention(query, key, value, mask=None, dropout=None):
-    "Compute 'Scaled Dot Product Attention'"
+    "Compute 'Scaled Dot Product Attention' (adapted from Viswani et al.)"
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
@@ -47,6 +49,7 @@ def attention(query, key, value, mask=None, dropout=None):
     return torch.matmul(p_attn, value), p_attn
 
 class ListModule(nn.Module):
+    """Create single pytorch module from list of modules"""
     def __init__(self, *args):
         super().__init__()
         idx = 0
@@ -69,6 +72,9 @@ class ListModule(nn.Module):
         return len(self._modules)
 
 class KLAnnealer:
+    """
+    Scales KL weight (beta) linearly according to the number of epochs
+    """
     def __init__(self, kl_low, kl_high, n_epochs, start_epoch):
         self.kl_low = kl_low
         self.kl_high = kl_high
@@ -85,6 +91,7 @@ class KLAnnealer:
 ####### PREPROCESSING HELPERS ##########
 
 def smi_tokenizer(smile):
+    "Tokenizes SMILES string"
     pattern =  "(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\\\|\/|_|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
     regezz = re.compile(pattern)
     tokens = [token for token in regezz.findall(smile)]
@@ -92,6 +99,7 @@ def smi_tokenizer(smile):
     return tokens
 
 def encode_smiles(smile, max_len, char_dict):
+    "Converts tokenized SMILES string to list of token ids"
     for i in range(max_len - len(smile)):
         if i == 0:
             smile.append('<end>')
@@ -101,6 +109,7 @@ def encode_smiles(smile, max_len, char_dict):
     return smile_vec
 
 def get_char_weights(train_smiles, params, freq_penalty=0.5):
+    "Calculates token weights for a set of input data"
     char_dist = {}
     char_counts = np.zeros((params['NUM_CHAR'],))
     char_weights = np.zeros((params['NUM_CHAR'],))
@@ -128,6 +137,7 @@ def get_char_weights(train_smiles, params, freq_penalty=0.5):
 ####### POSTPROCESSING HELPERS ##########
 
 def decode_smiles(encoded_tensors, org_dict):
+    "Decodes tensor containing token ids into SMILES string"
     smiles = []
     for i in range(encoded_tensors.shape[0]):
         encoded_tensor = encoded_tensors.cpu().numpy()[i,:] - 1
@@ -141,6 +151,8 @@ def decode_smiles(encoded_tensors, org_dict):
     return smiles
 
 def calc_reconstruction_accuracies(input_smiles, output_smiles):
+    "Calculates SMILE, token and positional accuracies for a set of\
+    input and reconstructed SMILES strings"
     max_len = 126
     smile_accs = []
     hits = 0
@@ -169,32 +181,23 @@ def calc_reconstruction_accuracies(input_smiles, output_smiles):
     return smile_acc, token_acc, position_acc
 
 def calc_entropy(sample):
+    "Calculates Shannon information entropy for a set of input memories"
     es = []
     for i in range(sample.shape[1]):
         probs, bin_edges = np.histogram(sample[:,i], bins=1000, range=(-5., 5.), density=True)
         es.append(entropy(probs))
     return np.array(es)
 
-def greedy_decode(model, src, src_mask, max_len, start_symbol):
-    mem_key, mem_val, mu, logvar = model.encode(src, src_mask)
-    ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
-    for i in range(max_len-1):
-        out = model.decode(mem_key, mem_val, src_mask, Variable(ys),
-                           Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
-        out = model.generator(out)
-        prob = F.softmax(out[:, -1], dim=-1)
-        _, next_word = torch.max(prob, dim=1)
-        next_word = next_word.item() + 1
-        ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
-    return ys
-
 ####### ADDITIONAL METRIC CALCULATIONS #########
 
 def load_gen(path):
+    "Loads set of generated SMILES strings from path"
     smiles = pd.read_csv(path).SMILES.to_list()
     return smiles
 
 def valid(smiles):
+    "Returns valid SMILES (RDKit sanitizable) from a set of\
+    SMILES strings"
     valid_smiles = []
     for smi in smiles:
         mol = Chem.MolFromSmiles(smi)
@@ -209,6 +212,7 @@ def valid(smiles):
     return valid_smiles
 
 def calc_token_lengths(smiles):
+    "Calculates the token lengths of a set of SMILES strings"
     lens = []
     for smi in smiles:
         smi = smi_tokenizer(smi)
@@ -216,6 +220,7 @@ def calc_token_lengths(smiles):
     return lens
 
 def calc_MW(smiles):
+    "Calculates the molecular weights of a set of SMILES strings"
     MWs = []
     for smi in smiles:
         mol = Chem.MolFromSmiles(smi)
@@ -223,16 +228,20 @@ def calc_MW(smiles):
     return MWs
 
 def novel(smiles, train_smiles):
+    "Returns novel SMILES strings that do not appear\
+    in training set"
     set_smiles = set(smiles)
     set_train = set(train_smiles)
     novel_smiles = list(set_smiles - set_train)
     return novel_smiles
 
 def unique(smiles):
+    "Returns unique SMILES strings from set"
     unique_smiles = set(smiles)
     return list(unique_smiles)
 
 def fingerprints(smiles):
+    "Calculates fingerprints of a list of SMILES strings"
     fps = np.zeros((len(smiles), 1024))
     for i, smi in enumerate(smiles):
         mol = Chem.MolFromSmiles(smi)
@@ -241,11 +250,14 @@ def fingerprints(smiles):
     return fps
 
 def tanimoto_similarity(bv1, bv2):
+    "Calculates Tanimoto similarity between two fingerprint bit vectors"
     mand = sum(moses_fp & train_fp)
     mor = sum(moses_fp | train_fp)
     return mand / mor
 
 def pass_through_filters(smiles, data_dir='data'):
+    """Filters SMILES strings based on method implemented in
+    http://nlp.seas.harvard.edu/2018/04/03/attention.html"""
     _mcf = pd.read_csv('{}/mcf.csv'.format(data_dir))
     _pains = pd.read_csv('{}/wehi_pains.csv'.format(data_dir), names=['smarts', 'names'])
     _filters = [Chem.MolFromSmarts(x) for x in

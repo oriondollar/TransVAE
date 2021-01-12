@@ -11,7 +11,7 @@ from TransVAE.transvae.tvae_util import calc_entropy
 from TransVAE.scripts.parsers import sample_parser
 
 def sample(args):
-    # Load model
+    ### Load model
     ckpt_fn = args.model_ckpt
     if args.model == 'transvae':
         vae = TransVAE(load_fn=ckpt_fn)
@@ -20,7 +20,7 @@ def sample(args):
     elif args.model == 'rnn':
         vae = RNN(load_fn=ckpt_fn)
 
-    # Calculate entropy depending on sampling mode
+    ### Calculate entropy depending on sampling mode
     if args.sample_mode == 'rand':
         sample_mode = 'rand'
         sample_dims = None
@@ -35,7 +35,7 @@ def sample(args):
         elif args.sample_mode == 'k_high_entropy':
             sample_mode = 'k_dims'
 
-    # Generate samples
+    ### Generate samples
     samples = []
     n_gen = args.n_samples
     while n_gen > 0:

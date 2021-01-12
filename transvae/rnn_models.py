@@ -13,6 +13,7 @@ from transvae.opt import NoamOpt, AdamOpt
 from transvae.trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, Embeddings, LayerNorm
 
 # https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
+# Attention architectures inspired by the ^^^ implementation
 ########## Model Classes ############
 
 class RNNAttn(VAEShell):
@@ -92,46 +93,6 @@ class RNNAttn(VAEShell):
         ### Initiate optimizer
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
                                   self.params['ADAM_LR'], optim.Adam)
-
-    # def calc_attn(self, data):
-    #     """
-    #     Method for calculating and saving the recurrent attention weights.
-    #     """
-    #     data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
-    #
-    #     data_iter = torch.utils.data.DataLoader(data,
-    #                                             batch_size=self.params['BATCH_SIZE'],
-    #                                             shuffle=False, num_workers=0,
-    #                                             pin_memory=False, drop_last=True)
-    #     save_shape = len(data_iter)*self.params['BATCH_SIZE']
-    #     self.batch_size = self.params['BATCH_SIZE']
-    #     self.chunk_size = self.batch_size // self.params['BATCH_CHUNKS']
-    #     attn_wts = torch.empty((save_shape, 4, 4, 127, 127)).cpu()
-    #
-    #     self.model.eval()
-    #     for j, data in enumerate(data_iter):
-    #         for i in range(self.params['BATCH_CHUNKS']):
-    #             batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
-    #             if self.use_gpu:
-    #                 batch_data = batch_data.cuda()
-    #
-    #             src = Variable(batch_data).long()
-    #             src_mask = (src != self.pad_idx).unsqueeze(-2)
-    #             tgt = Variable(batch_data[:,:-1]).long()
-    #             tgt_mask = make_std_mask(tgt, self.pad_idx)
-    #
-    #             ### Run through encoder to get memory
-    #             x_out, mu, logvar, wts = self.model(src, tgt, src_mask, tgt_mask, return_attn=True)
-    #             start = j*self.batch_size+i*self.chunk_size
-    #             stop = j*self.batch_size+(i+1)*self.chunk_size
-    #             for i in range(len(wts[0])):
-    #                 self_attn_wts[start:stop,i,:,:,:] = wts[0][i]
-    #             self_attn_wts[start:stop,-1,:,:,:] = wts[1][0]
-    #             for i in range(len(wts[2])):
-    #                 src_attn_wts[start:stop,i,:,:,:] = wts[2][i]
-    #
-    #     return self_attn_wts.numpy(), src_attn_wts.numpy()
-
 
 class RNN(VAEShell):
     """
@@ -219,6 +180,9 @@ class RNNEncoderDecoder(nn.Module):
         return self.decoder(self.src_embed(tgt), mem)
 
 class RNNAttnEncoder(nn.Module):
+    """
+    Recurrent encoder with attention architecture
+    """
     def __init__(self, size, d_latent, N, dropout, src_length, bypass_attention, bypass_bottleneck, device):
         super().__init__()
         self.size = size
@@ -269,6 +233,9 @@ class RNNAttnEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNAttnDecoder(nn.Module):
+    """
+    Recurrent decoder with attention architecture
+    """
     def __init__(self, size, d_latent, N, dropout, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
@@ -310,6 +277,9 @@ class RNNAttnDecoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNEncoder(nn.Module):
+    """
+    Simple recurrent encoder architecture
+    """
     def __init__(self, size, d_latent, N, dropout, bypass_bottleneck, device):
         super().__init__()
         self.size = size
@@ -343,6 +313,9 @@ class RNNEncoder(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
 
 class RNNDecoder(nn.Module):
+    """
+    Simple recurrent decoder architecture
+    """
     def __init__(self, size, d_latent, N, dropout, tgt_length, tf, bypass_bottleneck, device):
         super().__init__()
         self.size = size
