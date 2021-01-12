@@ -44,6 +44,6 @@ The default model dimension is 128 but this can also be changed at the command l
 
  ## Analysis
 
- Examples of model analysis functions and how to use them are shown in `notebooks/visualizing_attention.ipynb` and `notebooks/evaluating_models.ipynb`. Additionally, there are a few helper functions in `transvae/analysis.py` that allow you to plot training performance curves like so
+ Examples of model analysis functions and how to use them are shown in `notebooks/visualizing_attention.ipynb` and `notebooks/evaluating_models.ipynb`. Additionally, there are a few helper functions in `transvae/analysis.py` that allow you to plot training performance curves and other useful performance metrics.
 
  ![Training Curve](https://raw.githubusercontent.com/oriondollar/TransVAE/master/imgs/training_curve.png)
