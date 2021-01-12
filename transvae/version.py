@@ -21,7 +21,7 @@ CLASSIFIERS = ["Intended Audience :: Science/Research",
                "License :: OSI Approved :: MIT License",
                "Operating System :: OS Independent",
                "Programming Language :: Python",
-               "Topic :: Science/Research"]
+               "Topic :: Scientific/Engineering"]
 
 with open('README.md') as readme_file:
     README = readme_file.read()
