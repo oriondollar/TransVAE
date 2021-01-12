@@ -29,3 +29,21 @@ The default model dimension is 128 but this can also be changed at the command l
  `python scripts/train.py --model transvae --data_source custom --train_path my_train_data.txt --test_path my_test_data.txt --vocab_path my_vocab.pkl --char_weights_path my_char_weights.npy --save_name my_model`
 
  The vocabulary must be a pickle file that stores a dictionary that maps token -> token id and it must begin with the `<start>` or `<bos>` token. All modifiable hyperparameters can be viewed with `python scripts/train.py --help`.
+
+ ## Sampling
+
+ There are three sampling modes to choose from - random, high entropy or k-random high entropy. If you choose to use one of the high entropy categories, you must also supply a set of SMILES (typically the training set) to use to calculate the entropy of your model prior to sampling. An example command might look like:
+
+ `python scripts/sample.py --model transvae --model_ckpt checkpoints/trans4x-256_zinc.ckpt --smiles data/zinc_train.txt --sample_mode high_entropy`
+
+ ## Calculating Attention
+
+ Attention can be calculated using the `attention.py` script. Due to the large number of attention heads and layers within the transvae model you should be careful about calculating attention for too many samples as it will generate a large amount of data. An example command for calculating attention might look like
+
+ `python scripts/attention.py --model rnnattn --model_ckpt checkpoints/rnnattn-256_pubchem.ckpt --smiles data/pubchem_train_(n=500).txt --save_path attn_wts/rnnattn_wts.npy`
+
+ ## Analysis
+
+ Examples of model analysis functions and how to use them are shown in `notebooks/visualizing_attention.ipynb` and `notebooks/evaluating_models.ipynb`. Additionally, there are a few helper functions in `transvae/analysis.py` that allow you to plot training performance curves like so
+
+ [training_curve](https://raw.githubusercontent.com/oriondollar/TransVAE/master/imgs/training_curve.png)
