@@ -28,13 +28,13 @@ with open('README.md') as readme_file:
 
 NAME = "transvae"
 MAINTAINER = "Orion Dollar"
-MAINTAINER_EMAIL = "orion.dollar@gmail.com"
+MAINTAINER_EMAIL = "odollar@uw.edu"
 DESCRIPTION = "A package for training and analyzing attention-based VAEs for molecular design."
 URL = "https://github.com/oriondollar/TransVAE"
 DOWNLOAD_URL = ""
 LICENSE = "MIT License"
 AUTHOR = "Orion Dollar"
-AUTHOR_EMAIL = "salamda1@uw.edu"
+AUTHOR_EMAIL = "odollar@uw.edu"
 PLATFORMS = "OS Independent"
 MAJOR = _version_major
 MINOR = _version_minor
