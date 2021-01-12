@@ -5,7 +5,7 @@ from os.path import join as pjoin
 _version_major = 0
 _version_minor = 4
 _version_micro = 4  # use '' for first of series, number for 1 and above
-_version_extra = 'dev1'
+_version_extra = 'dev2'
 # _version_extra = ''  # Uncomment this for full releases
 
 # Construct full version string from these.
