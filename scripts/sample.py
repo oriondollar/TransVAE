@@ -26,7 +26,7 @@ def sample(args):
         sample_dims = None
     else:
         entropy_data = pd.read_csv(args.smiles).to_numpy()
-        _, mus, _ = vae.calc_mems(entropy_data)
+        _, mus, _ = vae.calc_mems(entropy_data, log=False, save=False)
         vae_entropy = calc_entropy(mus)
         entropy_idxs = np.where(np.array(vae_entropy) > args.entropy_cutoff)[0]
         sample_dims = entropy_idxs
