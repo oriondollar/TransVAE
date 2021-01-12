@@ -1,30 +1,33 @@
-import pathlib
+import os
 from setuptools import setup, find_packages
 
-HERE = pathlib.Path(__file__).parent
-README = (HERE / "README.md").read_text()
+PACKAGES = find_packages()
 
-setup(
-	name='transvae',
-    version='0.4',
-	description='A package for training and analyzing attention VAEs for molecular design.',
-    long_description=README,
-    long_description_content_type="text/markdown",
-    url='https://github.com/oriondollar/TransVAE',
-    author='Orion Dollar',
-    author_email='orion.dollar@gmail.com',
-	license='MIT License',
-	packages=find_packages(),
-	install_requires=[
-		'numpy',
-        'torch',
-		'pandas',
-		'seaborn',
-		'matplotlib'],
-	classifiers=[
-    	'Intended Audience :: Science/Research',
-   		'License :: OSI Approved :: MIT License',
-    	'Operating System :: POSIX :: Linux',
-    	'Programming Language :: Python :: 3.7',
-		]
-)
+ver_file = os.path.join('transvae', 'version.py')
+with open(ver_file) as f:
+    exec(f.read())
+
+with open('README.md') as readme_file:
+    README = readme_file.read()
+
+opts = dict(name=NAME,
+            maintainer=MAINTAINER,
+            maintainer_email=MAINTAINER_EMAIL,
+            description=DESCRIPTION,
+            long_description=README,
+            url=URL,
+            download_url=DOWNLOAD_URL,
+            license=LICENSE,
+            classifiers=CLASSIFIERS,
+            author=AUTHOR,
+            author_email=AUTHOR_EMAIL,
+            platforms=PLATFORMS,
+            version=VERSION,
+            packages=PACKAGES,
+            package_data=PACKAGE_DATA,
+            install_requires=REQUIRES
+            )
+
+
+if __name__ == '__main__':
+    setup(**opts)
