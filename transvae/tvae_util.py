@@ -2,7 +2,6 @@ import re
 import math
 import copy
 import time
-import imageio
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
