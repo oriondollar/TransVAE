@@ -1,6 +1,6 @@
 import argparse
-from TransVAE.transvae.trans_models import TransVAE
-from TransVAE.transvae.rnn_models import RNN, RNNAttn
+from transvae.trans_models import TransVAE
+from transvae.rnn_models import RNN, RNNAttn
 
 def model_init(args, params={}):
     ### Model Name
