@@ -8,11 +8,11 @@ import pandas as pd
 import torch
 from torch.autograd import Variable
 
-from TransVAE.transvae.trans_models import TransVAE
-from TransVAE.transvae.rnn_models import RNN, RNNAttn
+from transvae.trans_models import TransVAE
+from transvae.rnn_models import RNN, RNNAttn
 
-from TransVAE.transvae.data import vae_data_gen, make_std_mask
-from TransVAE.scripts.parsers import attn_parser
+from transvae.data import vae_data_gen, make_std_mask
+from scripts.parsers import attn_parser
 
 def calc_attention(args):
     ### Load model

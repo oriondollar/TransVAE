@@ -5,10 +5,10 @@ import pkg_resources
 import numpy as np
 import pandas as pd
 
-from TransVAE.transvae.trans_models import TransVAE
-from TransVAE.transvae.rnn_models import RNN, RNNAttn
-from TransVAE.transvae.tvae_util import calc_entropy
-from TransVAE.scripts.parsers import sample_parser
+from transvae.trans_models import TransVAE
+from transvae.rnn_models import RNN, RNNAttn
+from transvae.tvae_util import calc_entropy
+from scripts.parsers import sample_parser
 
 def sample(args):
     ### Load model
