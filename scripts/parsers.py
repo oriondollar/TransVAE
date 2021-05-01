@@ -19,10 +19,11 @@ def model_init(args, params={}):
     ### Load Model
     if args.model == 'transvae':
         vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
-                       d_ff=args.d_feedforward, d_latent=args.d_latent)
+                       d_ff=args.d_feedforward, d_latent=args.d_latent,
+                       bottleneck_type='linear')
     elif args.model == 'rnnattn':
         vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
-                      d_latent=args.d_latent)
+                      d_latent=args.d_latent, bottleneck_type='linear')
     elif args.model == 'rnn':
         vae = RNN(params=params, name=save_name, d_model=args.d_model,
                   d_latent=args.d_latent)
