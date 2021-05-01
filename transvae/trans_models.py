@@ -45,7 +45,7 @@ class VAEShell():
             self.vocab_size = len(self.params['CHAR_DICT'].keys())
             self.pad_idx = self.params['CHAR_DICT']['_']
             if 'CHAR_WEIGHTS' in self.params.keys():
-                self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].clone().detach()
+                self.params['CHAR_WEIGHTS'] = torch.tensor(self.params['CHAR_WEIGHTS'], dtype=torch.float)
             else:
                 self.params['CHAR_WEIGHTS'] = torch.ones(self.vocab_size, dtype=torch.float)
         self.loss_func = vae_loss
