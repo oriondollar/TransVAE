@@ -20,10 +20,10 @@ def model_init(args, params={}):
     if args.model == 'transvae':
         vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
                        d_ff=args.d_feedforward, d_latent=args.d_latent,
-                       bottleneck_type='linear')
+                       bottleneck_type='conv')
     elif args.model == 'rnnattn':
         vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
-                      d_latent=args.d_latent, bottleneck_type='linear')
+                      d_latent=args.d_latent, bottleneck_type='conv')
     elif args.model == 'rnn':
         vae = RNN(params=params, name=save_name, d_model=args.d_model,
                   d_latent=args.d_latent)
