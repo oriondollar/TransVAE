@@ -30,7 +30,7 @@ def train(args):
         with open(args.vocab_path, 'rb') as f:
             char_dict = pickle.load(f)
         if args.char_weights_path is not None:
-            char_weights = pd.read_csv(args.char_weights_path)
+            char_weights = np.load(args.char_weights_path)
             params['CHAR_WEIGHTS'] = char_weights
     else:
         train_data = pd.read_csv('data/{}_train.txt'.format(args.data_source)).to_numpy()
