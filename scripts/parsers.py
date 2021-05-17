@@ -55,6 +55,8 @@ def train_parser():
     parser.add_argument('--test_path', default=None, type=str)
     parser.add_argument('--vocab_path', default=None, type=str)
     parser.add_argument('--char_weights_path', default=None, type=str)
+    ### Load Parameters
+    parser.add_argument('--checkpoint', default=None, type=str)
     ### Save Parameters
     parser.add_argument('--save_name', default=None, type=str)
     parser.add_argument('--save_freq', default=5, type=int)

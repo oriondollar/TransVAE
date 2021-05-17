@@ -84,7 +84,12 @@ class KLAnnealer:
 
     def __call__(self, epoch):
         k = (epoch - self.start_epoch) if epoch >= self.start_epoch else 0
-        return self.kl_low + k * self.kl
+        beta = self.kl_low + k * self.kl
+        if beta > self.kl_high:
+            beta = self.kl_high
+        else:
+            pass
+        return beta
 
 
 ####### PREPROCESSING HELPERS ##########

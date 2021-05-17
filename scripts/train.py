@@ -5,11 +5,21 @@ import pkg_resources
 import numpy as np
 import pandas as pd
 
+import torch
+
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
 from scripts.parsers import model_init, train_parser
 
 def train(args):
+    ### Update beta init parameter
+    if args.checkpoint is not None:
+        ckpt = torch.load(args.checkpoint, map_location=torch.device('cpu'))
+        start_epoch = ckpt['epoch']
+        total_epochs = start_epoch + args.epochs
+        beta_init = (args.beta - args.beta_init) / total_epochs * start_epoch
+        args.beta_init = beta_init
+
     ### Build params dict
     params = {'ADAM_LR': args.adam_lr,
               'ANNEAL_START': args.anneal_start,
@@ -52,6 +62,8 @@ def train(args):
 
     ### Train model
     vae = model_init(args, params)
+    if args.checkpoint is not None:
+        vae.load(args.checkpoint)
     vae.train(train_data, test_data, epochs=args.epochs, save_freq=args.save_freq)
 
 
