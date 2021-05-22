@@ -148,9 +148,10 @@ def decode_smiles(encoded_tensors, org_dict):
         smile = ''
         for i in range(encoded_tensor.shape[0]):
             idx = encoded_tensor[i]
-            smile += org_dict[idx]
-        smile = smile.replace('_', '')
-        smile = smile.replace('<end>', '')
+            if org_dict[idx] == '<end>':
+                break
+            else:
+                smile += org_dict[idx]
         smiles.append(smile)
     return smiles
 
