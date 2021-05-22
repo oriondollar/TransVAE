@@ -10,7 +10,7 @@ from torch.autograd import Variable
 
 from transvae.tvae_util import *
 from transvae.opt import NoamOpt, AdamOpt
-from transvae.trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, Embeddings, LayerNorm
+from transvae.trans_models import VAEShell, Generator, ConvBottleneck, DeconvBottleneck, PropertyPredictor, Embeddings, LayerNorm
 
 # https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 # Attention architectures inspired by the ^^^ implementation
@@ -24,6 +24,8 @@ class RNNAttn(VAEShell):
                  d_latent=128, dropout=0.1, tf=True,
                  bypass_attention=False,
                  bypass_bottleneck=False,
+                 property_predictor=False,
+                 d_pp=256, depth_pp=2,
                  load_fn=None):
         super().__init__(params, name)
         """
@@ -57,8 +59,12 @@ class RNNAttn(VAEShell):
         self.params['teacher_force'] = tf
         self.params['bypass_attention'] = bypass_attention
         self.params['bypass_bottleneck'] = bypass_bottleneck
+        self.params['property_predictor'] = property_predictor
+        self.params['d_pp'] = d_pp
+        self.params['depth_pp'] = depth_pp
         self.arch_params = ['N', 'd_model', 'd_latent', 'dropout', 'teacher_force',
-                            'bypass_attention', 'bypass_bottleneck']
+                            'bypass_attention', 'bypass_bottleneck', 'property_predictor',
+                            'd_pp', 'depth_pp']
 
         ### Build model architecture
         if load_fn is None:
@@ -81,7 +87,12 @@ class RNNAttn(VAEShell):
         generator = Generator(self.params['d_model'], self.vocab_size)
         src_embed = Embeddings(self.params['d_model'], self.vocab_size)
         tgt_embed = Embeddings(self.params['d_model'], self.vocab_size)
-        self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, self.params)
+        if self.params['property_predictor']:
+            property_predictor = PropertyPredictor(self.params['d_pp'], self.params['depth_pp'], self.params['d_latent'])
+        else:
+            property_predictor = None
+        self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator,
+                                       property_predictor, self.params)
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -100,7 +111,8 @@ class RNN(VAEShell):
     """
     def __init__(self, params={}, name=None, N=3, d_model=128,
                  d_latent=128, dropout=0.1, tf=True,
-                 bypass_bottleneck=False, load_fn=None):
+                 bypass_bottleneck=False, property_predictor=False,
+                 d_pp=256, depth_pp=2, load_fn=None):
         super().__init__(params, name)
 
         ### Set learning rate for Adam optimizer
@@ -116,7 +128,11 @@ class RNN(VAEShell):
         self.params['dropout'] = dropout
         self.params['teacher_force'] = tf
         self.params['bypass_bottleneck'] = bypass_bottleneck
-        self.arch_params = ['N', 'd_model', 'd_latent', 'dropout', 'teacher_force', 'bypass_bottleneck']
+        self.params['property_predictor'] = property_predictor
+        self.params['d_pp'] = d_pp
+        self.params['depth_pp'] = depth_pp
+        self.arch_params = ['N', 'd_model', 'd_latent', 'dropout', 'teacher_force', 'bypass_bottleneck',
+                            'property_predictor', 'd_pp', 'depth_pp']
 
         ### Build model architecture
         if load_fn is None:
@@ -138,7 +154,12 @@ class RNN(VAEShell):
         generator = Generator(self.params['d_model'], self.vocab_size)
         src_embed = Embeddings(self.params['d_model'], self.vocab_size)
         tgt_embed = Embeddings(self.params['d_model'], self.vocab_size)
-        self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, self.params)
+        if self.params['property_predictor']:
+            property_predictor = PropertyPredictor(self.params['d_pp'], self.params['depth_pp'], self.params['d_latent'])
+        else:
+            property_predictor = None
+        self.model = RNNEncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator,
+                                       property_predictor, self.params)
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -158,7 +179,8 @@ class RNNEncoderDecoder(nn.Module):
     """
     Recurrent Encoder-Decoder Architecture
     """
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, params):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator,
+                 property_predictor, params):
         super().__init__()
         self.params = params
         self.encoder = encoder
@@ -166,18 +188,26 @@ class RNNEncoderDecoder(nn.Module):
         self.src_embed = src_embed
         self.tgt_embed = tgt_embed
         self.generator = generator
+        self.property_predictor = property_predictor
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
         mem, mu, logvar = self.encode(src)
         x, h = self.decode(tgt, mem)
         x = self.generator(x)
-        return x, mu, logvar
+        if self.property_predictor is not None:
+            prop = self.predict_property(mu)
+        else:
+            prop = None
+        return x, mu, logvar, prop
 
     def encode(self, src):
         return self.encoder(self.src_embed(src))
 
     def decode(self, tgt, mem):
         return self.decoder(self.src_embed(tgt), mem)
+
+    def predict_property(self, mu):
+        return self.property_predictor(mu)
 
 class RNNAttnEncoder(nn.Module):
     """

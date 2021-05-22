@@ -19,13 +19,17 @@ def model_init(args, params={}):
     ### Load Model
     if args.model == 'transvae':
         vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
-                       d_ff=args.d_feedforward, d_latent=args.d_latent)
+                       d_ff=args.d_feedforward, d_latent=args.d_latent,
+                       property_predictor=args.property_predictor, d_pp=args.d_pp,
+                       depth_pp=args.depth_pp)
     elif args.model == 'rnnattn':
         vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
-                      d_latent=args.d_latent)
+                      d_latent=args.d_latent, property_predictor=args.property_predictor,
+                      d_pp=args.d_pp, depth_pp=args.depth_pp)
     elif args.model == 'rnn':
         vae = RNN(params=params, name=save_name, d_model=args.d_model,
-                  d_latent=args.d_latent)
+                  d_latent=args.d_latent, property_predictor=args.property_predictor,
+                  d_pp=args.d_pp, depth_pp=args.depth_pp)
 
     return vae
 
@@ -37,6 +41,9 @@ def train_parser():
     parser.add_argument('--d_model', default=128, type=int)
     parser.add_argument('--d_feedforward', default=128, type=int)
     parser.add_argument('--d_latent', default=128, type=int)
+    parser.add_argument('--property_predictor', default=False, action='store_true')
+    parser.add_argument('--d_pp', default=256, type=int)
+    parser.add_argument('--depth_pp', default=2, type=int)
     ### Hyperparameters
     parser.add_argument('--batch_size', default=500, type=int)
     parser.add_argument('--batch_chunks', default=5, type=int)
@@ -51,8 +58,10 @@ def train_parser():
     ### Data Parameters
     parser.add_argument('--data_source', choices=['zinc', 'pubchem', 'custom'],
                         required=True, type=str)
-    parser.add_argument('--train_path', default=None, type=str)
-    parser.add_argument('--test_path', default=None, type=str)
+    parser.add_argument('--train_mols_path', default=None, type=str)
+    parser.add_argument('--test_mols_path', default=None, type=str)
+    parser.add_argument('--train_props_path', default=None, type=str)
+    parser.add_argument('--test_props_path', default=None, type=str)
     parser.add_argument('--vocab_path', default=None, type=str)
     parser.add_argument('--char_weights_path', default=None, type=str)
     ### Load Parameters
