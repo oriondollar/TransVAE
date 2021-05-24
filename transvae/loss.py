@@ -16,9 +16,9 @@ def vae_loss(x, x_out, mu, logvar, true_prop, pred_prop, weights, beta=1):
     if pred_prop is not None:
         MSE = F.mse_loss(pred_prop.squeeze(-1), true_prop)
     else:
-        MSE = 0.
+        MSE = torch.tensor(0.)
     if torch.isnan(KLD):
-        KLD = 0.
+        KLD = torch.tensor(0.)
     return BCE + KLD + MSE, BCE, KLD, MSE
 
 def trans_vae_loss(x, x_out, mu, logvar, true_len, pred_len, true_prop, pred_prop, weights, beta=1):
@@ -34,7 +34,7 @@ def trans_vae_loss(x, x_out, mu, logvar, true_len, pred_len, true_prop, pred_pro
     if pred_prop is not None:
         MSE = F.mse_loss(pred_prop.squeeze(-1), true_prop)
     else:
-        MSE = 0.
+        MSE = torch.tensor(0.)
     if torch.isnan(KLD):
-        KLD = 0.
+        KLD = torch.tensor(0.)
     return BCEmol + BCEmask + KLD + MSE, BCEmol, BCEmask, KLD, MSE
