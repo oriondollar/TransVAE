@@ -11,7 +11,8 @@ def vae_loss(x, x_out, mu, logvar, true_prop, pred_prop, weights, beta=1):
     x = x.contiguous().view(-1)
     x_out = x_out.contiguous().view(-1, x_out.size(2))
     BCE = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
-    KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    # KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    KLD = beta * torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1), dim=0)
     if pred_prop is not None:
         MSE = F.mse_loss(pred_prop.squeeze(-1), true_prop)
     else:
@@ -28,7 +29,8 @@ def trans_vae_loss(x, x_out, mu, logvar, true_len, pred_len, true_prop, pred_pro
     true_len = true_len.contiguous().view(-1)
     BCEmol = F.cross_entropy(x_out, x, reduction='mean', weight=weights)
     BCEmask = F.cross_entropy(pred_len, true_len, reduction='mean')
-    KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    # KLD = beta * -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    KLD = beta * torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1), dim=0)
     if pred_prop is not None:
         MSE = F.mse_loss(pred_prop.squeeze(-1), true_prop)
     else:
