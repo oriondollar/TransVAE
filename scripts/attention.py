@@ -31,7 +31,7 @@ def calc_attention(args):
         data = data[:args.n_samples,:]
 
     ### Load data and prepare for iteration
-    data = vae_data_gen(data, char_dict=vae.params['CHAR_DICT'])
+    data = vae_data_gen(data, props=None, char_dict=vae.params['CHAR_DICT'])
     data_iter = torch.utils.data.DataLoader(data,
                                             batch_size=args.batch_size,
                                             shuffle=False, num_workers=0,
@@ -54,12 +54,15 @@ def calc_attention(args):
         for j, data in enumerate(data_iter):
             for i in range(args.batch_chunks):
                 batch_data = data[i*chunk_size:(i+1)*chunk_size,:]
+                mols_data = batch_data[:,:-1]
+                props_data = batch_data[:,-1]
                 if vae.use_gpu:
-                    batch_data = batch_data.cuda()
+                    mols_data = mols_data.cuda()
+                    props_data = props_data.cuda()
 
-                src = Variable(batch_data).long()
+                src = Variable(mols_data).long()
                 src_mask = (src != vae.pad_idx).unsqueeze(-2)
-                tgt = Variable(batch_data[:,:-1]).long()
+                tgt = Variable(mols_data[:,:-1]).long()
                 tgt_mask = make_std_mask(tgt, vae.pad_idx)
 
                 # Run samples through model to calculate weights
