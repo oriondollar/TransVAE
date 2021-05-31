@@ -25,9 +25,9 @@ def calc_attention(args):
         vae = RNN(load_fn=ckpt_fn)
 
     if args.shuffle:
-        data = pd.read_csv(args.smiles).sample(args.n_samples).to_numpy()
+        data = pd.read_csv(args.mols).sample(args.n_samples).to_numpy()
     else:
-        data = pd.read_csv(args.smiles).to_numpy()
+        data = pd.read_csv(args.mols).to_numpy()
         data = data[:args.n_samples,:]
 
     ### Load data and prepare for iteration
