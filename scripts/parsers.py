@@ -97,7 +97,7 @@ def attn_parser():
     parser.add_argument('--model', choices=['transvae', 'rnnattn'],
                         required=True, type=str)
     parser.add_argument('--model_ckpt', required=True, type=str)
-    parser.add_argument('--smiles', required=True, type=str)
+    parser.add_argument('--mols', required=True, type=str)
     ### Sampling Parameters
     parser.add_argument('--n_samples', default=5000, type=int)
     parser.add_argument('--batch_size', default=500, type=int)
