@@ -86,10 +86,13 @@ def calc_attention(args):
         for j, data in enumerate(data_iter):
             for i in range(args.batch_chunks):
                 batch_data = data[i*chunk_size:(i+1)*chunk_size,:]
+                mols_data = batch_data[:,:-1]
+                props_data = batch_data[:,-1]
                 if vae.use_gpu:
-                    batch_data = batch_data.cuda()
+                    mols_data = mols_data.cuda()
+                    props_data = props_data.cuda()
 
-                src = Variable(batch_data).long()
+                src = Variable(mols_data).long()
 
                 # Run samples through model to calculate weights
                 mem, mu, logvar, attn_wts = vae.model.encoder(vae.model.src_embed(src), return_attn=True)
