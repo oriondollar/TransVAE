@@ -550,7 +550,7 @@ class VAEShell():
             mus(np.array): Mean memory array (prior to reparameterization)
             logvars(np.array): Log variance array (prior to reparameterization)
         """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+        data = vae_data_gen(data, props=None, char_dict=self.params['CHAR_DICT'])
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
