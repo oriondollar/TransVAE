@@ -20,16 +20,16 @@ def model_init(args, params={}):
     if args.model == 'transvae':
         vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
                        d_ff=args.d_feedforward, d_latent=args.d_latent,
-                       property_predictor=args.property_predictor, d_pp=args.d_pp,
-                       depth_pp=args.depth_pp)
+                       property_predictor=args.property_predictor, d_pp=args.d_property_predictor,
+                       depth_pp=args.depth_property_predictor)
     elif args.model == 'rnnattn':
         vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
                       d_latent=args.d_latent, property_predictor=args.property_predictor,
-                      d_pp=args.d_pp, depth_pp=args.depth_pp)
+                      d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor)
     elif args.model == 'rnn':
         vae = RNN(params=params, name=save_name, d_model=args.d_model,
                   d_latent=args.d_latent, property_predictor=args.property_predictor,
-                  d_pp=args.d_pp, depth_pp=args.depth_pp)
+                  d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor)
 
     return vae
 
@@ -42,8 +42,8 @@ def train_parser():
     parser.add_argument('--d_feedforward', default=128, type=int)
     parser.add_argument('--d_latent', default=128, type=int)
     parser.add_argument('--property_predictor', default=False, action='store_true')
-    parser.add_argument('--d_pp', default=256, type=int)
-    parser.add_argument('--depth_pp', default=2, type=int)
+    parser.add_argument('--d_property_predictor', default=256, type=int)
+    parser.add_argument('--depth_property_predictor', default=2, type=int)
     ### Hyperparameters
     parser.add_argument('--batch_size', default=500, type=int)
     parser.add_argument('--batch_chunks', default=5, type=int)
