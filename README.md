@@ -27,9 +27,15 @@ The default model dimension is 128 but this can also be changed at the command l
 
  You may also specify a custom train and test set like so
 
- `python scripts/train.py --model transvae --data_source custom --train_path my_train_data.txt --test_path my_test_data.txt --vocab_path my_vocab.pkl --char_weights_path my_char_weights.npy --save_name my_model`
+ `python scripts/train.py --model transvae --data_source custom --train_mols_path my_train_data.txt --test_mols_path my_test_data.txt --vocab_path my_vocab.pkl --char_weights_path my_char_weights.npy --save_name my_model`
 
  The vocabulary must be a pickle file that stores a dictionary that maps token -> token id and it must begin with the `<start>` or `<bos>` token. All modifiable hyperparameters can be viewed with `python scripts/train.py --help`.
+
+ ### Property Prediction
+
+ An additional set of linear layers may be appended to the latent memory to embed a property within the bottleneck using the `property_predictor` tag. To do so you must supply an additional set of train and test files with properties indexed at the same position as the molecules in the train and test sets. A command to train a model with this functionality might look like
+
+ `python scripts/train.py --model transvae --property_predictor --data_source zinc --train_props_path train_property_data.txt --test_props_path test_property_data.txt --save_name my_props_model`
 
  ## Sampling
 
