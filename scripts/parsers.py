@@ -78,7 +78,7 @@ def sample_parser():
     parser.add_argument('--model', choices=['transvae', 'rnnattn', 'rnn'],
                         required=True, type=str)
     parser.add_argument('--model_ckpt', required=True, type=str)
-    parser.add_argument('--smiles', default=None, type=str)
+    parser.add_argument('--mols', default=None, type=str)
     ### Sampling Parameters
     parser.add_argument('--sample_mode', choices=['rand', 'high_entropy', 'k_high_entropy'],
                         required=True, type=str)

@@ -41,13 +41,13 @@ The default model dimension is 128 but this can also be changed at the command l
 
  There are three sampling modes to choose from - random, high entropy or k-random high entropy. If you choose to use one of the high entropy categories, you must also supply a set of SMILES (typically the training set) to use to calculate the entropy of your model prior to sampling. An example command might look like:
 
- `python scripts/sample.py --model transvae --model_ckpt checkpoints/trans4x-256_zinc.ckpt --smiles data/zinc_train.txt --sample_mode high_entropy`
+ `python scripts/sample.py --model transvae --model_ckpt checkpoints/trans4x-256_zinc.ckpt --mols data/zinc_train.txt --sample_mode high_entropy`
 
  ## Calculating Attention
 
  Attention can be calculated using the `attention.py` script. Due to the large number of attention heads and layers within the transvae model you should be careful about calculating attention for too many samples as it will generate a large amount of data. An example command for calculating attention might look like
 
- `python scripts/attention.py --model rnnattn --model_ckpt checkpoints/rnnattn-256_pubchem.ckpt --smiles data/pubchem_train_(n=500).txt --save_path attn_wts/rnnattn_wts.npy`
+ `python scripts/attention.py --model rnnattn --model_ckpt checkpoints/rnnattn-256_pubchem.ckpt --mols data/pubchem_train_(n=500).txt --save_path attn_wts/rnnattn_wts.npy`
 
  ## Analysis
 
