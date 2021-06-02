@@ -102,6 +102,15 @@ def smi_tokenizer(smile):
     assert smile == ''.join(tokens), ("{} could not be joined".format(smile))
     return tokens
 
+def build_org_dict(char_dict):
+    org_dict = {}
+    for i, (k, v) in enumerate(char_dict.items()):
+        if i == 0:
+            pass
+        else:
+            org_dict[int(v-1)] = k
+    return org_dict
+
 def encode_smiles(smile, max_len, char_dict):
     "Converts tokenized SMILES string to list of token ids"
     for i in range(max_len - len(smile)):
