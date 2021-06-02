@@ -123,16 +123,20 @@ class VAEShell():
         self.model.load_state_dict(self.current_state['model_state_dict'])
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
-    def train(self, train_data, val_data, epochs=100, save=True, save_freq=None, log=True, log_dir='trials'):
+    def train(self, train_mols, val_mols, train_props=None, val_props=None,
+              epochs=100, save=True, save_freq=None, log=True, log_dir='trials'):
         """
         Train model and validate
 
         Arguments:
-            train_data (np.array, required): Numpy array containing columns with
-                                             smiles and property scores (latter
-                                             only used if predict_property=True)
-            val_data (np.array, required): Same format as train_data. Used for
+            train_mols (np.array, required): Numpy array containing training
+                                             molecular structures
+            val_mols (np.array, required): Same format as train_mols. Used for
                                            model development or validation
+            train_props (np.array): Numpy array containing chemical property of
+                                   molecular structure
+            val_props (np.array): Same format as train_prop. Used for model
+                                 development or validation
             epochs (int): Number of epochs to train the model for
             save (bool): If true, saves latest and best versions of model
             save_freq (int): Frequency with which to save model checkpoints
@@ -140,8 +144,8 @@ class VAEShell():
             log_dir (str): Directory to store log files
         """
         ### Prepare data iterators
-        train_data = self.data_gen(train_data, char_dict=self.params['CHAR_DICT'])
-        val_data = self.data_gen(val_data, char_dict=self.params['CHAR_DICT'])
+        train_data = self.data_gen(train_mols, train_props, char_dict=self.params['CHAR_DICT'])
+        val_data = self.data_gen(val_mols, val_props, char_dict=self.params['CHAR_DICT'])
 
         train_iter = torch.utils.data.DataLoader(train_data,
                                                  batch_size=self.params['BATCH_SIZE'],
@@ -175,7 +179,7 @@ class VAEShell():
                 already_wrote = False
             log_file = open(log_fn, 'a')
             if not already_wrote:
-                log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,run_time\n')
+                log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,prop_mse_loss,run_time\n')
             log_file.close()
 
         ### Initialize Annealer
@@ -193,33 +197,42 @@ class VAEShell():
                 avg_bce_losses = []
                 avg_bcemask_losses = []
                 avg_kld_losses = []
+                avg_prop_mse_losses = []
                 start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
                     batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                    mols_data = batch_data[:,:-1]
+                    props_data = batch_data[:,-1]
                     if self.use_gpu:
-                        batch_data = batch_data.cuda()
+                        mols_data = mols_data.cuda()
+                        props_data = props_data.cuda()
 
-                    src = Variable(batch_data).long()
-                    tgt = Variable(batch_data[:,:-1]).long()
+
+                    src = Variable(mols_data).long()
+                    tgt = Variable(mols_data[:,:-1]).long()
+                    true_prop = Variable(props_data)
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
 
                     if self.model_type == 'transformer':
-                        x_out, mu, logvar, pred_len = self.model(src, tgt, src_mask, tgt_mask)
+                        x_out, mu, logvar, pred_len, pred_prop = self.model(src, tgt, src_mask, tgt_mask)
                         true_len = src_mask.sum(dim=-1)
-                        loss, bce, bce_mask, kld = trans_vae_loss(src, x_out, mu, logvar,
-                                                                  true_len, pred_len,
-                                                                  self.params['CHAR_WEIGHTS'],
-                                                                  beta)
+                        loss, bce, bce_mask, kld, prop_mse = trans_vae_loss(src, x_out, mu, logvar,
+                                                                            true_len, pred_len,
+                                                                            true_prop, pred_prop,
+                                                                            self.params['CHAR_WEIGHTS'],
+                                                                            beta)
                         avg_bcemask_losses.append(bce_mask.item())
                     else:
-                        x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                        loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
-                                                        self.params['CHAR_WEIGHTS'],
-                                                        beta)
+                        x_out, mu, logvar, pred_prop = self.model(src, tgt, src_mask, tgt_mask)
+                        loss, bce, kld, prop_mse = self.loss_func(src, x_out, mu, logvar,
+                                                                  true_prop, pred_prop,
+                                                                  self.params['CHAR_WEIGHTS'],
+                                                                  beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
+                    avg_prop_mse_losses.append(prop_mse.item())
                     loss.backward()
                 self.optimizer.step()
                 self.model.zero_grad()
@@ -232,17 +245,19 @@ class VAEShell():
                 else:
                     avg_bcemask = np.mean(avg_bcemask_losses)
                 avg_kld = np.mean(avg_kld_losses)
+                avg_prop_mse = np.mean(avg_prop_mse_losses)
                 losses.append(avg_loss)
 
                 if log:
                     log_file = open(log_fn, 'a')
-                    log_file.write('{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
-                                                                j, 'train',
-                                                                avg_loss,
-                                                                avg_bce,
-                                                                avg_bcemask,
-                                                                avg_kld,
-                                                                run_time))
+                    log_file.write('{},{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
+                                                                         j, 'train',
+                                                                         avg_loss,
+                                                                         avg_bce,
+                                                                         avg_bcemask,
+                                                                         avg_kld,
+                                                                         avg_prop_mse,
+                                                                         run_time))
                     log_file.close()
             train_loss = np.mean(losses)
 
@@ -254,34 +269,42 @@ class VAEShell():
                 avg_bce_losses = []
                 avg_bcemask_losses = []
                 avg_kld_losses = []
+                avg_prop_mse_losses = []
                 start_run_time = perf_counter()
                 for i in range(self.params['BATCH_CHUNKS']):
                     batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                    mols_data = batch_data[:,:-1]
+                    props_data = batch_data[:,-1]
                     if self.use_gpu:
-                        batch_data = batch_data.cuda()
+                        mols_data = mols_data.cuda()
+                        props_data = props_data.cuda()
 
-                    src = Variable(batch_data).long()
-                    tgt = Variable(batch_data[:,:-1]).long()
+                    src = Variable(mols_data).long()
+                    tgt = Variable(mols_data[:,:-1]).long()
+                    true_prop = Variable(props_data)
                     src_mask = (src != self.pad_idx).unsqueeze(-2)
                     tgt_mask = make_std_mask(tgt, self.pad_idx)
                     scores = Variable(data[:,-1])
 
                     if self.model_type == 'transformer':
-                        x_out, mu, logvar, pred_len = self.model(src, tgt, src_mask, tgt_mask)
+                        x_out, mu, logvar, pred_len, pred_prop = self.model(src, tgt, src_mask, tgt_mask)
                         true_len = src_mask.sum(dim=-1)
-                        loss, bce, bce_mask, kld = trans_vae_loss(src, x_out, mu, logvar,
-                                                                  true_len, pred_len,
-                                                                  self.params['CHAR_WEIGHTS'],
-                                                                  beta)
+                        loss, bce, bce_mask, kld, prop_mse = trans_vae_loss(src, x_out, mu, logvar,
+                                                                            true_len, pred_len,
+                                                                            true_prop, pred_prop,
+                                                                            self.params['CHAR_WEIGHTS'],
+                                                                            beta)
                         avg_bcemask_losses.append(bce_mask.item())
                     else:
-                        x_out, mu, logvar = self.model(src, tgt, src_mask, tgt_mask)
-                        loss, bce, kld = self.loss_func(src, x_out, mu, logvar,
-                                                        self.params['CHAR_WEIGHTS'],
-                                                        beta)
+                        x_out, mu, logvar, pred_prop = self.model(src, tgt, src_mask, tgt_mask)
+                        loss, bce, kld, prop_mse = self.loss_func(src, x_out, mu, logvar,
+                                                                  true_prop, pred_prop,
+                                                                  self.params['CHAR_WEIGHTS'],
+                                                                  beta)
                     avg_losses.append(loss.item())
                     avg_bce_losses.append(bce.item())
                     avg_kld_losses.append(kld.item())
+                    avg_prop_mse_losses.append(prop_mse.item())
                 stop_run_time = perf_counter()
                 run_time = round(stop_run_time - start_run_time, 5)
                 avg_loss = np.mean(avg_losses)
@@ -291,6 +314,7 @@ class VAEShell():
                 else:
                     avg_bcemask = np.mean(avg_bcemask_losses)
                 avg_kld = np.mean(avg_kld_losses)
+                avg_prop_mse = np.mean(avg_prop_mse_losses)
                 losses.append(avg_loss)
 
                 if log:
@@ -301,6 +325,7 @@ class VAEShell():
                                                                 avg_bce,
                                                                 avg_bcemask,
                                                                 avg_kld,
+                                                                avg_prop_mse,
                                                                 run_time))
                     log_file.close()
 
@@ -525,7 +550,7 @@ class VAEShell():
             mus(np.array): Mean memory array (prior to reparameterization)
             logvars(np.array): Log variance array (prior to reparameterization)
         """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+        data = vae_data_gen(data, props=None, char_dict=self.params['CHAR_DICT'])
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
@@ -546,10 +571,13 @@ class VAEShell():
                 log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                mols_data = batch_data[:,:-1]
+                props_data = batch_data[:,-1]
                 if self.use_gpu:
-                    batch_data = batch_data.cuda()
+                    mols_data = mols_data.cuda()
+                    props_data = props_data.cuda()
 
-                src = Variable(batch_data).long()
+                src = Variable(mols_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory
@@ -584,7 +612,7 @@ class TransVAE(VAEShell):
     """
     def __init__(self, params={}, name=None, N=3, d_model=128, d_ff=512,
                  d_latent=128, h=4, dropout=0.1, bypass_bottleneck=False,
-                 load_fn=None):
+                 property_predictor=False, d_pp=256, depth_pp=2, load_fn=None):
         super().__init__(params, name)
         """
         Instatiating a TransVAE object builds the model architecture, data structs
@@ -603,6 +631,10 @@ class TransVAE(VAEShell):
             h (int): Number of heads per attention layer
             dropout (float): Rate of dropout
             bypass_bottleneck (bool): If false, model functions as standard autoencoder
+            property_predictor (bool): If true, model will predict property from latent memory
+            d_pp (int): Dimensionality of property predictor layers
+            depth_pp (int): Number of property predictor layers
+            load_fn (str): Path to checkpoint file
         """
 
         ### Store architecture params
@@ -615,7 +647,11 @@ class TransVAE(VAEShell):
         self.params['h'] = h
         self.params['dropout'] = dropout
         self.params['bypass_bottleneck'] = bypass_bottleneck
-        self.arch_params = ['N', 'd_model', 'd_ff', 'd_latent', 'h', 'dropout', 'bypass_bottleneck']
+        self.params['property_predictor'] = property_predictor
+        self.params['d_pp'] = d_pp
+        self.params['depth_pp'] = depth_pp
+        self.arch_params = ['N', 'd_model', 'd_ff', 'd_latent', 'h', 'dropout', 'bypass_bottleneck',
+                            'property_predictor', 'd_pp', 'depth_pp']
 
         ### Build model architecture
         if load_fn is None:
@@ -641,7 +677,11 @@ class TransVAE(VAEShell):
         src_embed = nn.Sequential(Embeddings(self.params['d_model'], self.vocab_size), c(position))
         tgt_embed = nn.Sequential(Embeddings(self.params['d_model'], self.vocab_size), c(position))
         generator = Generator(self.params['d_model'], self.vocab_size)
-        self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator)
+        if self.params['property_predictor']:
+            property_predictor = PropertyPredictor(self.params['d_pp'], self.params['depth_pp'], self.params['d_latent'])
+        else:
+            property_predictor = None
+        self.model = EncoderDecoder(encoder, decoder, src_embed, tgt_embed, generator, property_predictor)
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -659,26 +699,34 @@ class EncoderDecoder(nn.Module):
     """
     Base transformer Encoder-Decoder architecture
     """
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator, property_predictor):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.src_embed = src_embed
         self.tgt_embed = tgt_embed
         self.generator = generator
+        self.property_predictor = property_predictor
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and tgt sequences"
         mem, mu, logvar, pred_len = self.encode(src, src_mask)
         x = self.decode(mem, src_mask, tgt, tgt_mask)
         x = self.generator(x)
-        return x, mu, logvar, pred_len
+        if self.property_predictor is not None:
+            prop = self.predict_property(mu)
+        else:
+            prop = None
+        return x, mu, logvar, pred_len, prop
 
     def encode(self, src, src_mask):
         return self.encoder(self.src_embed(src), src_mask)
 
     def decode(self, mem, src_mask, tgt, tgt_mask):
         return self.decoder(self.tgt_embed(tgt), mem, src_mask, tgt_mask)
+
+    def predict_property(self, mu):
+        return self.property_predictor(mu)
 
 class Generator(nn.Module):
     "Generates token predictions after final decoder layer"
@@ -949,6 +997,28 @@ class DeconvBottleneck(nn.Module):
     def forward(self, x):
         for deconv in self.deconv_layers:
             x = F.relu(deconv(x))
+        return x
+
+############## Property Predictor #################
+
+class PropertyPredictor(nn.Module):
+    "Optional property predictor module"
+    def __init__(self, d_pp, depth_pp, d_latent):
+        super().__init__()
+        prediction_layers = []
+        for i in range(depth_pp):
+            if i == 0:
+                linear_layer = nn.Linear(d_latent, d_pp)
+            elif i == depth_pp - 1:
+                linear_layer = nn.Linear(d_pp, 1)
+            else:
+                linear_layer = nn.Linear(d_pp, d_pp)
+            prediction_layers.append(linear_layer)
+        self.prediction_layers = ListModule(*prediction_layers)
+
+    def forward(self, x):
+        for prediction_layer in self.prediction_layers:
+            x = F.relu(prediction_layer(x))
         return x
 
 ############## Embedding Layers ###################

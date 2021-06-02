@@ -1,7 +1,7 @@
 [![DOI](https://zenodo.org/badge/287491872.svg)](https://zenodo.org/badge/latestdoi/287491872)
 # Giving Attention to Generative VAE Models for _De Novo_ Molecular Design
 ![Attention Heads](https://raw.githubusercontent.com/oriondollar/TransVAE/master/imgs/attn_heads.png)
-This repo contains the codebase for the attention-based implementations of VAE models for molecular design as described in [this paper](https://chemrxiv.org/articles/preprint/Giving_Attention_to_Generative_VAE_Models_for_De_Novo_Molecular_Design/13724629). The addition of attention allows models to learn longer range dependencies between input features and improves the quality and interpretability of learned molecular embeddings. The code is organized by folders that correspond to the following sections:
+This repo contains the codebase for the attention-based implementations of VAE models for molecular design as described in [this paper](https://pubs.rsc.org/en/content/articlehtml/2021/sc/d1sc01050f). The addition of attention allows models to learn longer range dependencies between input features and improves the quality and interpretability of learned molecular embeddings. The code is organized by folders that correspond to the following sections:
 
 - **transvae**: code required to run models including model class definitions, data preparation, optimizers, etc.
 - **scripts**: scripts for training models, generating samples and performing calculations
@@ -27,9 +27,15 @@ The default model dimension is 128 but this can also be changed at the command l
 
  You may also specify a custom train and test set like so
 
- `python scripts/train.py --model transvae --data_source custom --train_path my_train_data.txt --test_path my_test_data.txt --vocab_path my_vocab.pkl --char_weights_path my_char_weights.npy --save_name my_model`
+ `python scripts/train.py --model transvae --data_source custom --train_mols_path my_train_data.txt --test_mols_path my_test_data.txt --vocab_path my_vocab.pkl --char_weights_path my_char_weights.npy --save_name my_model`
 
  The vocabulary must be a pickle file that stores a dictionary that maps token -> token id and it must begin with the `<start>` or `<bos>` token. All modifiable hyperparameters can be viewed with `python scripts/train.py --help`.
+
+ ### Property Prediction
+
+ An additional set of linear layers may be appended to the latent memory to embed a property within the bottleneck using the `property_predictor` tag. To do so you must supply an additional set of train and test files with properties indexed at the same position as the molecules in the train and test sets. A command to train a model with this functionality might look like
+
+ `python scripts/train.py --model transvae --property_predictor --data_source zinc --train_props_path train_property_data.txt --test_props_path test_property_data.txt --save_name my_props_model`
 
  ## Sampling
 
