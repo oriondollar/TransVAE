@@ -1,7 +1,7 @@
 [![DOI](https://zenodo.org/badge/287491872.svg)](https://zenodo.org/badge/latestdoi/287491872)
 # Giving Attention to Generative VAE Models for _De Novo_ Molecular Design
 ![Attention Heads](https://raw.githubusercontent.com/oriondollar/TransVAE/master/imgs/attn_heads.png)
-This repo contains the codebase for the attention-based implementations of VAE models for molecular design as described in [this paper](https://chemrxiv.org/articles/preprint/Giving_Attention_to_Generative_VAE_Models_for_De_Novo_Molecular_Design/13724629). The addition of attention allows models to learn longer range dependencies between input features and improves the quality and interpretability of learned molecular embeddings. The code is organized by folders that correspond to the following sections:
+This repo contains the codebase for the attention-based implementations of VAE models for molecular design as described in [this paper](https://pubs.rsc.org/en/content/articlepdf/2021/sc/d1sc01050f). The addition of attention allows models to learn longer range dependencies between input features and improves the quality and interpretability of learned molecular embeddings. The code is organized by folders that correspond to the following sections:
 
 - **transvae**: code required to run models including model class definitions, data preparation, optimizers, etc.
 - **scripts**: scripts for training models, generating samples and performing calculations
