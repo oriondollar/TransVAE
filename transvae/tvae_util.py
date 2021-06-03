@@ -149,20 +149,20 @@ def get_char_weights(train_smiles, params, freq_penalty=0.5):
 
 ####### POSTPROCESSING HELPERS ##########
 
-def decode_smiles(encoded_tensors, org_dict):
-    "Decodes tensor containing token ids into SMILES string"
-    smiles = []
+def decode_mols(encoded_tensors, org_dict):
+    "Decodes tensor containing token ids into string"
+    mols = []
     for i in range(encoded_tensors.shape[0]):
         encoded_tensor = encoded_tensors.cpu().numpy()[i,:] - 1
-        smile = ''
+        mol_string = ''
         for i in range(encoded_tensor.shape[0]):
             idx = encoded_tensor[i]
-            if org_dict[idx] == '<end>':
-                break
+            if org_dict[idx] == '<end>' or org_dict[idx] == '_':
+                pass
             else:
-                smile += org_dict[idx]
-        smiles.append(smile)
-    return smiles
+                mol_string += org_dict[idx]
+        mols.append(mol_string)
+    return mols
 
 def calc_reconstruction_accuracies(input_smiles, output_smiles):
     "Calculates SMILE, token and positional accuracies for a set of\

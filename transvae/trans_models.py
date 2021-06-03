@@ -490,7 +490,7 @@ class VAEShell():
                     decoded = None
 
                 if return_str:
-                    decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+                    decoded = decode_mols(decoded, self.params['ORG_DICT'])
                     decoded_smiles += decoded
                 else:
                     decoded_smiles.append(decoded)
@@ -532,7 +532,7 @@ class VAEShell():
             decoded = None
 
         if return_str:
-            decoded = decode_smiles(decoded, self.params['ORG_DICT'])
+            decoded = decode_mols(decoded, self.params['ORG_DICT'])
         return decoded
 
     def calc_mems(self, data, log=True, save_dir='memory', save_fn='model_name', save=True):
