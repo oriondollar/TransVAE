@@ -157,7 +157,9 @@ def decode_mols(encoded_tensors, org_dict):
         mol_string = ''
         for i in range(encoded_tensor.shape[0]):
             idx = encoded_tensor[i]
-            if org_dict[idx] == '<end>' or org_dict[idx] == '_':
+            if org_dict[idx] == '<end>':
+                break
+            elif org_dict[idx] == '_':
                 pass
             else:
                 mol_string += org_dict[idx]
