@@ -449,7 +449,7 @@ class VAEShell():
                                    token ids
             mems (np.array): Array of model memory vectors
         """
-        data = vae_data_gen(data, char_dict=self.params['CHAR_DICT'])
+        data = vae_data_gen(data, props=None, char_dict=self.params['CHAR_DICT'])
 
         data_iter = torch.utils.data.DataLoader(data,
                                                 batch_size=self.params['BATCH_SIZE'],
@@ -468,10 +468,13 @@ class VAEShell():
                 log_file.close()
             for i in range(self.params['BATCH_CHUNKS']):
                 batch_data = data[i*self.chunk_size:(i+1)*self.chunk_size,:]
+                mols_data = batch_data[:,:-1]
+                props_data = batch_data[:,-1]
                 if self.use_gpu:
-                    batch_data = batch_data.cuda()
+                    mols_data = mols_data.cuda()
+                    props_data = props_data.cuda()
 
-                src = Variable(batch_data).long()
+                src = Variable(mols_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
 
                 ### Run through encoder to get memory

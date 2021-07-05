@@ -159,10 +159,9 @@ def decode_mols(encoded_tensors, org_dict):
             idx = encoded_tensor[i]
             if org_dict[idx] == '<end>':
                 break
-            elif org_dict[idx] == '_':
-                pass
             else:
                 mol_string += org_dict[idx]
+        mol_string = mol_string.strip('_')
         mols.append(mol_string)
     return mols
 
@@ -267,8 +266,8 @@ def fingerprints(smiles):
 
 def tanimoto_similarity(bv1, bv2):
     "Calculates Tanimoto similarity between two fingerprint bit vectors"
-    mand = sum(moses_fp & train_fp)
-    mor = sum(moses_fp | train_fp)
+    mand = sum(bv1 & bv2)
+    mor = sum(bv1 | bv2)
     return mand / mor
 
 def pass_through_filters(smiles, data_dir='data'):
