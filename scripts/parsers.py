@@ -83,6 +83,7 @@ def sample_parser():
     parser.add_argument('--sample_mode', choices=['rand', 'high_entropy', 'k_high_entropy'],
                         required=True, type=str)
     parser.add_argument('--k', default=15, type=int)
+    parser.add_argument('--condition', default='', type=str)
     parser.add_argument('--entropy_cutoff', default=5, type=float)
     parser.add_argument('--n_samples', default=30000, type=int)
     parser.add_argument('--n_samples_per_batch', default=100, type=int)

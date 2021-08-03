@@ -380,7 +380,7 @@ class VAEShell():
                     z[:,d] = torch.randn(size)
         return z
 
-    def greedy_decode(self, mem, src_mask=None):
+    def greedy_decode(self, mem, src_mask=None, condition=[]):
         """
         Greedy decode from model memory
 
@@ -394,7 +394,12 @@ class VAEShell():
         start_symbol = self.params['CHAR_DICT']['<start>']
         max_len = self.tgt_len
         decoded = torch.ones(mem.shape[0],1).fill_(start_symbol).long()
+        for tok in condition:
+            condition_symbol = self.params['CHAR_DICT'][tok]
+            condition_vec = torch.ones(mem.shape[0],1).fill_(condition_symbol).long()
+            decoded = torch.cat([decoded, condition_vec], dim=1)
         tgt = torch.ones(mem.shape[0],max_len+1).fill_(start_symbol).long()
+        tgt[:,:len(condition)+1] = decoded
         if src_mask is None and self.model_type == 'transformer':
             mask_lens = self.model.encoder.predict_mask_length(mem)
             src_mask = torch.zeros((mem.shape[0], 1, self.src_len+1))
@@ -410,7 +415,7 @@ class VAEShell():
             tgt = tgt.cuda()
 
         self.model.eval()
-        for i in range(max_len):
+        for i in range(len(condition), max_len):
             if self.model_type == 'transformer':
                 decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
                 if self.use_gpu:
@@ -504,7 +509,8 @@ class VAEShell():
             return decoded_smiles
 
     def sample(self, n, method='greedy', sample_mode='rand',
-                        sample_dims=None, k=None, return_str=True):
+                        sample_dims=None, k=None, return_str=True,
+                        condition=[]):
         """
         Method for sampling from memory and decoding back into SMILES strings
 
@@ -530,7 +536,7 @@ class VAEShell():
 
         ### Decode logic
         if method == 'greedy':
-            decoded = self.greedy_decode(mem)
+            decoded = self.greedy_decode(mem, condition=condition)
         else:
             decoded = None
 

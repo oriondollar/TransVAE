@@ -20,6 +20,12 @@ def sample(args):
     elif args.model == 'rnn':
         vae = RNN(load_fn=ckpt_fn)
 
+    ### Parse conditional string
+    if args.condition == '':
+        condition = []
+    else:
+        condition = args.condition.split(',')
+
     ### Calculate entropy depending on sampling mode
     if args.sample_mode == 'rand':
         sample_mode = 'rand'
@@ -44,7 +50,7 @@ def sample(args):
         samples.extend(current_samples)
         n_gen -= len(current_samples)
 
-    samples = pd.DataFrame(samples, columns=['smile'])
+    samples = pd.DataFrame(samples, columns=['mol'])
     if args.save_path is None:
         os.makedirs('generated', exist_ok=True)
         save_path = 'generated/{}_{}.csv'.format(vae.name, args.sample_mode)
