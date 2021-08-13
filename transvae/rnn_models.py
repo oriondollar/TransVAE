@@ -304,7 +304,7 @@ class RNNAttnDecoder(nn.Module):
         return x, h
 
     def initH(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
+        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device).float()
 
 class RNNEncoder(nn.Module):
     """
@@ -340,7 +340,7 @@ class RNNEncoder(nn.Module):
         return mem, mu, logvar
 
     def initH(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device)
+        return torch.zeros(self.n_layers, batch_size, self.size, device=self.device).float()
 
 class RNNDecoder(nn.Module):
     """
