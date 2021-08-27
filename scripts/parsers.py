@@ -108,3 +108,15 @@ def attn_parser():
     parser.add_argument('--save_path', default=None, type=str)
 
     return parser
+
+def vocab_parser():
+    parser = argparse.ArgumentParser()
+    ### Vocab Parameters
+    parser.add_argument('--mols', required=True, type=str)
+    parser.add_argument('--freq_penalty', default=0.5, type=float)
+    parser.add_argument('--pad_penalty', default=0.1, type=float)
+    parser.add_argument('--vocab_name', default='custom_char_dict', type=str)
+    parser.add_argument('--weights_name', default='custom_char_weights', type=str)
+    parser.add_argument('--save_dir', default='data', type=str)
+
+    return parser

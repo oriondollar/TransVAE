@@ -23,7 +23,7 @@ def vae_data_gen(mols, props, char_dict):
     if props is None:
         props = np.zeros(smiles.shape)
     del mols
-    smiles = [smi_tokenizer(x) for x in smiles]
+    smiles = [tokenizer(x) for x in smiles]
     encoded_data = torch.empty((len(smiles), 128))
     for j, smi in enumerate(smiles):
         encoded_smi = encode_smiles(smi, 126, char_dict)

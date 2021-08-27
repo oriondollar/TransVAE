@@ -94,7 +94,7 @@ class KLAnnealer:
 
 ####### PREPROCESSING HELPERS ##########
 
-def smi_tokenizer(smile):
+def tokenizer(smile):
     "Tokenizes SMILES string"
     pattern =  "(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\\\|\/|_|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
     regezz = re.compile(pattern)
@@ -230,7 +230,7 @@ def calc_token_lengths(smiles):
     "Calculates the token lengths of a set of SMILES strings"
     lens = []
     for smi in smiles:
-        smi = smi_tokenizer(smi)
+        smi = tokenizer(smi)
         lens.append(len(smi))
     return lens
 
