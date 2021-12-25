@@ -19,6 +19,10 @@ from transvae.rnn_models import RNN, RNNAttn
 from scripts.parsers import model_init, train_parser
 
 def train(rank, args):
+    ### Initialize process group
+    dist.init_process_group(backend='nccl', init_method='env://',
+                            world_size=args.n_gpus, rank=rank)
+                            
     ### Update beta init parameter
     if args.checkpoint is not None:
         ckpt = torch.load(args.checkpoint, map_location=torch.device('cpu'))
