@@ -193,10 +193,10 @@ class VAEShell():
                 already_wrote = True
             except FileNotFoundError:
                 already_wrote = False
-            log_file = open(log_fn, 'a')
             if not already_wrote and self.rank == 0:
+                log_file = open(log_fn, 'a')
                 log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,prop_mse_loss,run_time\n')
-            log_file.close()
+                log_file.close()
 
         ### Initialize Annealer
         kl_annealer = KLAnnealer(self.params['BETA_INIT'], self.params['BETA'],
