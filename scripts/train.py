@@ -91,9 +91,7 @@ def train(rank, args):
     vae = model_init(args, params, rank=rank)
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
-    vae.rank = rank
     torch.cuda.set_device(rank)
-    vae.model.cuda(rank)
     vae.model = DDP(vae.model, device_ids=[rank], find_unused_parameters=True)
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
