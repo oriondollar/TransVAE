@@ -10,12 +10,15 @@ import pandas as pd
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import torch.nn.parallel.DistributedDataParallel as DDP
 
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
 from scripts.parsers import model_init, train_parser
 
-def train(args):
+def train(rank, args):
     ### Update beta init parameter
     if args.checkpoint is not None:
         ckpt = torch.load(args.checkpoint, map_location=torch.device('cpu'))
@@ -84,8 +87,10 @@ def train(args):
     vae = model_init(args, params)
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
-    if vae.n_gpus > 1:
-        vae.model = nn.DataParallel(vae.model)
+    vae.rank = rank
+    torch.cuda.set_device(rank)
+    vae.model.cuda(rank)
+    vae.model = DDP(vae.model, device_ids=[rank])
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
 
@@ -93,4 +98,7 @@ def train(args):
 if __name__ == '__main__':
     parser = train_parser()
     args = parser.parse_args()
-    train(args)
+
+    args.n_gpus = torch.cuda.device_count()
+    for rank in range(args.n_gpus):
+        mp.spawn(train, n_procs=args.n_gpus, args=(args,))

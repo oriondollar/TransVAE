@@ -69,6 +69,7 @@ class VAEShell():
         ### GPU
         self.use_gpu = torch.cuda.is_available()
         self.n_gpus = torch.cuda.device_count()
+        self.rank = None
 
     def save(self, state, fn, path='checkpoints', use_name=True):
         """
@@ -151,14 +152,25 @@ class VAEShell():
         train_data = self.data_gen(train_mols, train_props, char_dict=self.params['CHAR_DICT'])
         val_data = self.data_gen(val_mols, val_props, char_dict=self.params['CHAR_DICT'])
 
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_data,
+                                                                        num_replicas=self.n_gpus,
+                                                                        rank=self.rank,
+                                                                        shuffle=True)
+        val_sampler = torch.utils.data.distributed.DistributedSampler(val_data,
+                                                                      num_replicas=self.n_gpus,
+                                                                      rank=self.rank,
+                                                                      shuffle=True)
+
         train_iter = torch.utils.data.DataLoader(train_data,
                                                  batch_size=self.params['BATCH_SIZE'],
                                                  shuffle=True, num_workers=0,
-                                                 pin_memory=False, drop_last=True)
+                                                 pin_memory=False, drop_last=True,
+                                                 sampler=train_sampler)
         val_iter = torch.utils.data.DataLoader(val_data,
                                                batch_size=self.params['BATCH_SIZE'],
                                                shuffle=True, num_workers=0,
-                                               pin_memory=False, drop_last=True)
+                                               pin_memory=False, drop_last=True,
+                                               sampler=val_sampler)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
 
@@ -345,14 +357,14 @@ class VAEShell():
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
                 self.current_state['best_loss'] = self.best_loss
-                if save:
+                if save and self.rank == 0:
                     self.save(self.current_state, 'best')
 
             if (self.n_epochs) % save_freq == 0:
                 epoch_str = str(self.n_epochs)
                 while len(epoch_str) < 3:
                     epoch_str = '0' + epoch_str
-                if save:
+                if save and self.rank == 0:
                     self.save(self.current_state, epoch_str)
 
     ### Sampling and Decoding Functions
