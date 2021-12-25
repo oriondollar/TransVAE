@@ -71,6 +71,8 @@ def train_parser():
     ### Save Parameters
     parser.add_argument('--save_name', default=None, type=str)
     parser.add_argument('--save_freq', default=5, type=int)
+    ### Machine Parameters
+    parser.add_argument('--port', default='12355', type=str)
 
     return parser
 

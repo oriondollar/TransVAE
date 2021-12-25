@@ -637,7 +637,8 @@ class TransVAE(VAEShell):
     """
     def __init__(self, params={}, name=None, N=3, d_model=128, d_ff=512,
                  d_latent=128, h=4, dropout=0.1, bypass_bottleneck=False,
-                 property_predictor=False, d_pp=256, depth_pp=2, load_fn=None):
+                 property_predictor=False, d_pp=256, depth_pp=2, load_fn=None,
+                 rank=0):
         super().__init__(params, name, rank)
         """
         Instatiating a TransVAE object builds the model architecture, data structs

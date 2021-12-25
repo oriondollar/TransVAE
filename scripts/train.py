@@ -101,7 +101,7 @@ if __name__ == '__main__':
     parser = train_parser()
     args = parser.parse_args()
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = args.port
 
     args.n_gpus = torch.cuda.device_count()
     for rank in range(args.n_gpus):
