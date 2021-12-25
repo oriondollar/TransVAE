@@ -194,7 +194,7 @@ class VAEShell():
             except FileNotFoundError:
                 already_wrote = False
             log_file = open(log_fn, 'a')
-            if not already_wrote:
+            if not already_wrote and self.rank == 0:
                 log_file.write('epoch,batch_idx,data_type,tot_loss,recon_loss,pred_loss,kld_loss,prop_mse_loss,run_time\n')
             log_file.close()
 
@@ -267,7 +267,8 @@ class VAEShell():
                 if log:
                     log_file = open(log_fn, 'a')
                     log_file.write('{},{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
-                                                                         j, 'train',
+                                                                         j+self.rank*len(train_iter),
+                                                                         'train',
                                                                          avg_loss,
                                                                          avg_bce,
                                                                          avg_bcemask,
@@ -336,7 +337,8 @@ class VAEShell():
                 if log:
                     log_file = open(log_fn, 'a')
                     log_file.write('{},{},{},{},{},{},{},{}\n'.format(self.n_epochs,
-                                                                j, 'test',
+                                                                j+self.rank*len(val_iter),
+                                                                'test',
                                                                 avg_loss,
                                                                 avg_bce,
                                                                 avg_bcemask,
