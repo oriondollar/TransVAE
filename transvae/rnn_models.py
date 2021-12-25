@@ -96,7 +96,6 @@ class RNNAttn(VAEShell):
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        self.use_gpu = torch.cuda.is_available()
         if self.use_gpu:
             self.model.cuda()
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
@@ -163,7 +162,6 @@ class RNN(VAEShell):
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        self.use_gpu = torch.cuda.is_available()
         if self.use_gpu:
             self.model.cuda()
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()

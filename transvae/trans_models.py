@@ -66,6 +66,10 @@ class VAEShell():
                               'params': self.params}
         self.loaded_from = None
 
+        ### GPU
+        self.use_gpu = torch.cuda.is_available()
+        self.n_gpus = torch.cuda.device_count()
+
     def save(self, state, fn, path='checkpoints', use_name=True):
         """
         Saves current model state to .ckpt file
@@ -694,7 +698,6 @@ class TransVAE(VAEShell):
         for p in self.model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        self.use_gpu = torch.cuda.is_available()
         if self.use_gpu:
             self.model.cuda()
             self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
