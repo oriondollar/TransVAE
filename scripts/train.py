@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 import torch
+import torch.nn as nn
 
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
@@ -83,10 +84,10 @@ def train(args):
     vae = model_init(args, params)
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
-    print(vae.use_gpu)
-    print(vae.n_gpus)
-    # vae.train(train_mols, test_mols, train_props, test_props,
-    #           epochs=args.epochs, save_freq=args.save_freq)
+    if vae.n_gpus > 1:
+        vae.model = nn.DataParallel(vae.model)
+    vae.train(train_mols, test_mols, train_props, test_props,
+              epochs=args.epochs, save_freq=args.save_freq)
 
 
 if __name__ == '__main__':
