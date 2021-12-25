@@ -220,8 +220,8 @@ class VAEShell():
                     mols_data = batch_data[:,:-1]
                     props_data = batch_data[:,-1]
                     if self.use_gpu:
-                        mols_data = mols_data.cuda()
-                        props_data = props_data.cuda()
+                        mols_data = mols_data.cuda(self.rank)
+                        props_data = props_data.cuda(self.rank)
 
 
                     src = Variable(mols_data).long()
@@ -292,8 +292,8 @@ class VAEShell():
                     mols_data = batch_data[:,:-1]
                     props_data = batch_data[:,-1]
                     if self.use_gpu:
-                        mols_data = mols_data.cuda()
-                        props_data = props_data.cuda()
+                        mols_data = mols_data.cuda(self.rank)
+                        props_data = props_data.cuda(self.rank)
 
                     src = Variable(mols_data).long()
                     tgt = Variable(mols_data[:,:-1]).long()
