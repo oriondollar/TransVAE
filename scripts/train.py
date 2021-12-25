@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/gscratch/pfaendtner/orion/TransVAE')
+
 import os
 import pickle
 import pkg_resources
@@ -80,8 +83,10 @@ def train(args):
     vae = model_init(args, params)
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
-    vae.train(train_mols, test_mols, train_props, test_props,
-              epochs=args.epochs, save_freq=args.save_freq)
+    print(vae.use_gpu)
+    print(vae.n_gpus)
+    # vae.train(train_mols, test_mols, train_props, test_props,
+    #           epochs=args.epochs, save_freq=args.save_freq)
 
 
 if __name__ == '__main__':
