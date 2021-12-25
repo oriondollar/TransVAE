@@ -22,7 +22,7 @@ def train(rank, args):
     ### Initialize process group
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.n_gpus, rank=rank)
-                            
+
     ### Update beta init parameter
     if args.checkpoint is not None:
         ckpt = torch.load(args.checkpoint, map_location=torch.device('cpu'))
@@ -102,6 +102,8 @@ def train(rank, args):
 if __name__ == '__main__':
     parser = train_parser()
     args = parser.parse_args()
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
 
     args.n_gpus = torch.cuda.device_count()
     for rank in range(args.n_gpus):
