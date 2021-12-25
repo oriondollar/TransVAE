@@ -22,7 +22,7 @@ class VAEShell():
     VAE shell class that includes methods for parameter initiation,
     data loading, training, logging, checkpointing, loading and saving,
     """
-    def __init__(self, params, name=None):
+    def __init__(self, params, name=None, rank=0):
         self.params = params
         self.name = name
         if 'BATCH_SIZE' not in self.params.keys():
@@ -69,7 +69,7 @@ class VAEShell():
         ### GPU
         self.use_gpu = torch.cuda.is_available()
         self.n_gpus = torch.cuda.device_count()
-        self.rank = None
+        self.rank = rank
 
     def save(self, state, fn, path='checkpoints', use_name=True):
         """
@@ -426,16 +426,16 @@ class VAEShell():
             src_mask = torch.ones((mem.shape[0], 1, self.src_len))
 
         if self.use_gpu:
-            src_mask = src_mask.cuda()
-            decoded = decoded.cuda()
-            tgt = tgt.cuda()
+            src_mask = src_mask.cuda(self.rank)
+            decoded = decoded.cuda(self.rank)
+            tgt = tgt.cuda(self.rank)
 
         self.model.eval()
         for i in range(len(condition), max_len):
             if self.model_type == 'transformer':
                 decode_mask = Variable(subsequent_mask(decoded.size(1)).long())
                 if self.use_gpu:
-                    decode_mask = decode_mask.cuda()
+                    decode_mask = decode_mask.cuda(self.rank)
                 out = self.model.decode(mem, src_mask, Variable(decoded),
                                         decode_mask)
             else:
@@ -492,8 +492,8 @@ class VAEShell():
                 mols_data = batch_data[:,:-1]
                 props_data = batch_data[:,-1]
                 if self.use_gpu:
-                    mols_data = mols_data.cuda()
-                    props_data = props_data.cuda()
+                    mols_data = mols_data.cuda(self.rank)
+                    props_data = props_data.cuda(self.rank)
 
                 src = Variable(mols_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
@@ -548,7 +548,7 @@ class VAEShell():
         mem = self.sample_from_memory(n, mode=sample_mode, sample_dims=sample_dims, k=k)
 
         if self.use_gpu:
-            mem = mem.cuda()
+            mem = mem.cuda(self.rank)
 
         ### Decode logic
         if method == 'greedy':
@@ -599,8 +599,8 @@ class VAEShell():
                 mols_data = batch_data[:,:-1]
                 props_data = batch_data[:,-1]
                 if self.use_gpu:
-                    mols_data = mols_data.cuda()
-                    props_data = props_data.cuda()
+                    mols_data = mols_data.cuda(self.rank)
+                    props_data = props_data.cuda(self.rank)
 
                 src = Variable(mols_data).long()
                 src_mask = (src != self.pad_idx).unsqueeze(-2)
@@ -711,8 +711,8 @@ class TransVAE(VAEShell):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
         if self.use_gpu:
-            self.model.cuda()
-            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
+            self.model.cuda(self.rank)
+            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda(self.rank)
 
         ### Initiate optimizer
         self.optimizer = NoamOpt(self.params['d_model'], self.params['LR_SCALE'], self.params['WARMUP_STEPS'],

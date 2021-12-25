@@ -97,8 +97,8 @@ class RNNAttn(VAEShell):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
         if self.use_gpu:
-            self.model.cuda()
-            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
+            self.model.cuda(self.rank)
+            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda(self.rank)
 
         ### Initiate optimizer
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],
@@ -163,8 +163,8 @@ class RNN(VAEShell):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
         if self.use_gpu:
-            self.model.cuda()
-            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda()
+            self.model.cuda(self.rank)
+            self.params['CHAR_WEIGHTS'] = self.params['CHAR_WEIGHTS'].cuda(self.rank)
 
         ### Initiate optimizer
         self.optimizer = AdamOpt([p for p in self.model.parameters() if p.requires_grad],

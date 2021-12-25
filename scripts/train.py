@@ -88,7 +88,7 @@ def train(rank, args):
     params['ORG_DICT'] = org_dict
 
     ### Train model
-    vae = model_init(args, params)
+    vae = model_init(args, params, rank=rank)
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
     vae.rank = rank

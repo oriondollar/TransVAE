@@ -2,7 +2,7 @@ import argparse
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
 
-def model_init(args, params={}):
+def model_init(args, params={}, rank=0):
     ### Model Name
     if args.save_name is None:
         if args.model == 'transvae':
@@ -21,15 +21,17 @@ def model_init(args, params={}):
         vae = TransVAE(params=params, name=save_name, d_model=args.d_model,
                        d_ff=args.d_feedforward, d_latent=args.d_latent,
                        property_predictor=args.property_predictor, d_pp=args.d_property_predictor,
-                       depth_pp=args.depth_property_predictor)
+                       depth_pp=args.depth_property_predictor, rank=rank)
     elif args.model == 'rnnattn':
         vae = RNNAttn(params=params, name=save_name, d_model=args.d_model,
                       d_latent=args.d_latent, property_predictor=args.property_predictor,
-                      d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor)
+                      d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor,
+                      rank=rank)
     elif args.model == 'rnn':
         vae = RNN(params=params, name=save_name, d_model=args.d_model,
                   d_latent=args.d_latent, property_predictor=args.property_predictor,
-                  d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor)
+                  d_pp=args.d_property_predictor, depth_pp=args.depth_property_predictor,
+                  rank=rank)
 
     return vae
 
