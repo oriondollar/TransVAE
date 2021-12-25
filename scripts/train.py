@@ -101,4 +101,4 @@ if __name__ == '__main__':
 
     args.n_gpus = torch.cuda.device_count()
     for rank in range(args.n_gpus):
-        mp.spawn(train, n_procs=args.n_gpus, args=(args,))
+        mp.spawn(train, nprocs=args.n_gpus, args=(args,))
