@@ -27,7 +27,7 @@ class RNNAttn(VAEShell):
                  property_predictor=False,
                  d_pp=256, depth_pp=2,
                  load_fn=None):
-        super().__init__(params, name)
+        super().__init__(params, name, rank)
         """
         Instatiating a GruaVAE object builds the model architecture, data structs
         to store the model parameters and training information and initiates model
@@ -112,7 +112,7 @@ class RNN(VAEShell):
                  d_latent=128, dropout=0.1, tf=True,
                  bypass_bottleneck=False, property_predictor=False,
                  d_pp=256, depth_pp=2, load_fn=None):
-        super().__init__(params, name)
+        super().__init__(params, name, rank)
 
         ### Set learning rate for Adam optimizer
         if 'ADAM_LR' not in self.params.keys():
