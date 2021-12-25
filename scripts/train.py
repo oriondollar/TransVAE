@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import torch.nn.parallel.DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
