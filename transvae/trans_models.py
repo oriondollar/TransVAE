@@ -280,7 +280,7 @@ class VAEShell():
             train_loss = np.mean(losses)
 
             with open('write_params.txt', 'a') as f:
-                f.write('epoch: {} rank: {}\n'.format(epoch+1, rank))
+                f.write('epoch: {} rank: {}\n'.format(epoch+1, self.rank))
                 for i, (name, param) in enumerate(vae.model.named_parameters()):
                     if i > 0:
                         break
