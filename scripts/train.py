@@ -2,8 +2,8 @@ import sys
 sys.path.append('/gscratch/pfaendtner/orion/TransVAE')
 
 import os
-import time
 import pickle
+import random
 import pkg_resources
 
 import numpy as np
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = args.port
-    args.seed = int(time.time() * 1000)
+    args.seed = random.randint(0, 2**32-1)
 
     args.n_gpus = torch.cuda.device_count()
     mp.spawn(train, nprocs=args.n_gpus, args=(args,))
