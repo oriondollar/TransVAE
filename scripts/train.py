@@ -7,6 +7,7 @@ import pkg_resources
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -21,6 +22,10 @@ def train(rank, args):
     ### Initialize process group
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.n_gpus, rank=rank)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(args.seed)
 
     ### Update beta init parameter
     if args.checkpoint is not None:
@@ -107,6 +112,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = args.port
+    args.seed = datetime.now()
 
     args.n_gpus = torch.cuda.device_count()
     mp.spawn(train, nprocs=args.n_gpus, args=(args,))
