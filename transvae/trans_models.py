@@ -279,14 +279,6 @@ class VAEShell():
                     log_file.close()
             train_loss = np.mean(losses)
 
-            f = open('write_params.txt', 'a')
-            f.write('epoch: {} rank: {}\n'.format(epoch+1, self.rank))
-            for i, (name, param) in enumerate(self.model.named_parameters()):
-                if i > 0:
-                    break
-                f.write('{}: {}\n'.format(name, param.data))
-            f.close()
-
             ### Val Loop
             self.model.eval()
             losses = []

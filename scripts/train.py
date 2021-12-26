@@ -96,13 +96,6 @@ def train(rank, args):
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
     torch.cuda.set_device(rank)
-    f = open('write_params.txt', 'a')
-    f.write('{}\n'.format(rank))
-    for i, (name, param) in enumerate(vae.model.named_parameters()):
-        if i > 0:
-            break
-        f.write('{}: {}\n'.format(name, param.data))
-    f.close()
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
 
