@@ -281,7 +281,7 @@ class VAEShell():
 
             f = open('write_params.txt', 'a')
             f.write('epoch: {} rank: {}\n'.format(epoch+1, self.rank))
-            for i, (name, param) in enumerate(vae.model.named_parameters()):
+            for i, (name, param) in enumerate(self.model.named_parameters()):
                 if i > 0:
                     break
                 f.write('{}: {}\n'.format(name, param.data))
