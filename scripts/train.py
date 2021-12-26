@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from transvae.trans_models import TransVAE
 from transvae.rnn_models import RNN, RNNAttn
@@ -23,6 +22,9 @@ def train(rank, args):
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.n_gpus, rank=rank)
     torch.manual_seed(0)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(0)
 
     ### Update beta init parameter
     if args.checkpoint is not None:
@@ -93,7 +95,6 @@ def train(rank, args):
     if args.checkpoint is not None:
         vae.load(args.checkpoint)
     torch.cuda.set_device(rank)
-    vae.model = DDP(vae.model, device_ids=[rank], find_unused_parameters=True)
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
 

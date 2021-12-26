@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from transvae.tvae_util import *
 from transvae.opt import NoamOpt
@@ -173,9 +174,6 @@ class VAEShell():
                                                sampler=val_sampler)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
 
-
-        torch.backends.cudnn.benchmark = True
-
         ### Determine save frequency
         if save_freq is None:
             save_freq = epochs
@@ -201,6 +199,9 @@ class VAEShell():
         ### Initialize Annealer
         kl_annealer = KLAnnealer(self.params['BETA_INIT'], self.params['BETA'],
                                  epochs, self.params['ANNEAL_START'])
+
+        ### Distributed Training
+        self.model = DDP(self.model, device_ids=[self.rank], find_unused_parameters=True)
 
         ### Epoch loop
         for epoch in range(epochs):
