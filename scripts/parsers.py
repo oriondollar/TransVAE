@@ -47,8 +47,8 @@ def train_parser():
     parser.add_argument('--d_property_predictor', default=256, type=int)
     parser.add_argument('--depth_property_predictor', default=2, type=int)
     ### Hyperparameters
-    parser.add_argument('--batch_size', default=512, type=int)
-    parser.add_argument('--batch_chunks', default=2, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--batch_chunks', default=1, type=int)
     parser.add_argument('--beta', default=0.05, type=float)
     parser.add_argument('--beta_init', default=1e-8, type=float)
     parser.add_argument('--anneal_start', default=0, type=int)
