@@ -97,7 +97,10 @@ def train(rank, args):
     torch.cuda.set_device(rank)
     with open('write_params.txt', 'a') as f:
         f.write('{}\n'.format(rank))
-        f.write(vae.model.parameters[0].shape)
+        for i, (name, param) in enumerate(vae.model.parameters()):
+            if i > 0:
+                break
+            f.write('{}: {}'.format(name, param.data))
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
 
