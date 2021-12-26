@@ -100,7 +100,7 @@ def train(rank, args):
         for i, (name, param) in enumerate(vae.model.named_parameters()):
             if i > 0:
                 break
-            f.write('{}: {}'.format(name, param.data))
+            f.write('{}: {}\n'.format(name, param.data))
     vae.train(train_mols, test_mols, train_props, test_props,
               epochs=args.epochs, save_freq=args.save_freq)
 
