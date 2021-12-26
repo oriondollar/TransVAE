@@ -36,7 +36,7 @@ def train(rank, args):
         args.beta_init = beta_init
 
     ### Build params dict
-    params = {'ADAM_LR': args.adam_lr*(10**(args.n_gpus-1)),
+    params = {'ADAM_LR': args.adam_lr,
               'ANNEAL_START': args.anneal_start,
               'BATCH_CHUNKS': args.batch_chunks,
               'BATCH_SIZE': args.batch_size,
