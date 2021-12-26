@@ -202,6 +202,8 @@ class VAEShell():
 
         ### Distributed Training
         self.model = DDP(self.model, device_ids=[self.rank], find_unused_parameters=True)
+        
+        torch.backends.cudnn.benchmark = False
 
         ### Epoch loop
         for epoch in range(epochs):

@@ -21,10 +21,6 @@ def train(rank, args):
     ### Initialize process group
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.n_gpus, rank=rank)
-    torch.manual_seed(0)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(0)
 
     ### Update beta init parameter
     if args.checkpoint is not None:
