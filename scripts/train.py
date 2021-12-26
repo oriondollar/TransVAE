@@ -35,14 +35,14 @@ def train(rank, args):
         args.beta_init = beta_init
 
     ### Build params dict
-    params = {'ADAM_LR': args.adam_lr,
+    params = {'ADAM_LR': args.adam_lr*args.n_gpus,
               'ANNEAL_START': args.anneal_start,
               'BATCH_CHUNKS': args.batch_chunks,
               'BATCH_SIZE': args.batch_size,
               'BETA': args.beta,
               'BETA_INIT': args.beta_init,
               'EPS_SCALE': args.eps_scale,
-              'LR_SCALE': args.lr_scale,
+              'LR_SCALE': args.lr_scale*args.n_gpus,
               'WARMUP_STEPS': args.warmup_steps}
 
     ### Load data, vocab and token weights
