@@ -164,12 +164,12 @@ class VAEShell():
 
         train_iter = torch.utils.data.DataLoader(train_data,
                                                  batch_size=self.params['BATCH_SIZE'],
-                                                 shuffle=False, num_workers=0,
+                                                 shuffle=False, num_workers=5,
                                                  pin_memory=False, drop_last=True,
                                                  sampler=train_sampler)
         val_iter = torch.utils.data.DataLoader(val_data,
                                                batch_size=self.params['BATCH_SIZE'],
-                                               shuffle=False, num_workers=0,
+                                               shuffle=False, num_workers=5,
                                                pin_memory=False, drop_last=True,
                                                sampler=val_sampler)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']
