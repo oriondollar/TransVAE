@@ -130,7 +130,8 @@ class VAEShell():
         self.optimizer.load_state_dict(self.current_state['optimizer_state_dict'])
 
     def train(self, train_mols, val_mols, train_props=None, val_props=None,
-              epochs=100, save=True, save_freq=None, log=True, log_dir='trials'):
+              epochs=100, save=True, save_freq=None, log=True, log_dir='trials',
+              n_data_workers=0):
         """
         Train model and validate
 
@@ -164,12 +165,12 @@ class VAEShell():
 
         train_iter = torch.utils.data.DataLoader(train_data,
                                                  batch_size=self.params['BATCH_SIZE'],
-                                                 shuffle=False, num_workers=0,
+                                                 shuffle=False, num_workers=n_data_workers,
                                                  pin_memory=False, drop_last=True,
                                                  sampler=train_sampler)
         val_iter = torch.utils.data.DataLoader(val_data,
                                                batch_size=self.params['BATCH_SIZE'],
-                                               shuffle=False, num_workers=0,
+                                               shuffle=False, num_workers=n_data_workers,
                                                pin_memory=False, drop_last=True,
                                                sampler=val_sampler)
         self.chunk_size = self.params['BATCH_SIZE'] // self.params['BATCH_CHUNKS']

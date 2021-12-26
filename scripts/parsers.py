@@ -66,6 +66,7 @@ def train_parser():
     parser.add_argument('--test_props_path', default=None, type=str)
     parser.add_argument('--vocab_path', default=None, type=str)
     parser.add_argument('--char_weights_path', default=None, type=str)
+    parser.add_argument('--n_data_workers', default=0, type=int)
     ### Load Parameters
     parser.add_argument('--checkpoint', default=None, type=str)
     ### Save Parameters

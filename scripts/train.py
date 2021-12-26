@@ -97,7 +97,8 @@ def train(rank, args):
         vae.load(args.checkpoint)
     torch.cuda.set_device(rank)
     vae.train(train_mols, test_mols, train_props, test_props,
-              epochs=args.epochs, save_freq=args.save_freq)
+              epochs=args.epochs, save_freq=args.save_freq,
+              n_data_workers=args.n_data_workers)
 
 
 if __name__ == '__main__':
