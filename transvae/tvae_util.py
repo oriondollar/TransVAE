@@ -257,10 +257,10 @@ def unique(smiles):
 
 def fingerprints(smiles):
     "Calculates fingerprints of a list of SMILES strings"
-    fps = np.zeros((len(smiles), 1024))
+    fps = np.zeros((len(smiles), 2048))
     for i, smi in enumerate(smiles):
         mol = Chem.MolFromSmiles(smi)
-        fp = np.asarray(Morgan(mol, 2, 1024), dtype='uint8')
+        fp = np.asarray(Morgan(mol, 0), dtype='uint8')
         fps[i,:] = fp
     return fps
 
